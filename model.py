@@ -4,6 +4,27 @@ import torch.nn.functional as F
 from torchdiffeq import odeint
 
 
+class NonlinearOscillator:
+    def __init__(self, adjacency_matrix, a1=0.2, a2=11.0, a3=11.0, a4=1.0, mu=0.2):
+        self.adjacency_matrix = adjacency_matrix
+        self.a1 = a1
+        self.a2 = a2
+        self.a3 = a3
+        self.a4 = a4
+        self.mu = mu
+
+    def __call__(self, t, x):
+        out = torch.empty_like(x)
+        out[:, 0] = x[:, 1]
+        out[:, 1] = -x[:, 0] - self.a1 * x[:, 1] * (self.a2 * x[:, 0] ** 4 - self.a3 * x[:, 0] + self.a4)
+        # TODO: possible error
+        out[:, 1] += torch.sum(self.adjacency_matrix * (x[:, 1].reshape(-1, 1) - x[:, 1].reshape(1, -1)), dim=1)
+        return out
+
+    def ode_solve(self, x0, t):
+        return odeint(self, x0, t)
+
+
 class NodeNetwork(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, num_hidden_layers):
         super(NodeNetwork, self).__init__()
@@ -58,7 +79,7 @@ class NetworkODEModel(nn.Module):
         """
 
         :param x: shape (batch_size, num_nodes, node_dim)
-        :return:
+        :return: x_dot with shape (batch_size, num_nodes, node_dim)
         """
 
         batch_size = x.size(0)
@@ -76,13 +97,14 @@ class NetworkODEModel(nn.Module):
             coupling_sum = torch.zeros((batch_size, node_dim), device=x.device)
 
             for j in range(self.num_nodes):
-                if i != j:
-                    # Use the adjacency matrix element
-                    A_ij = adjacency_matrix[i, j]
-                    coupling_output = self.coupling_network(x[:, i, :], x[:, j, :])
-                    coupling_sum += A_ij * coupling_output
+                # Use the adjacency matrix element
+                A_ij = adjacency_matrix[i, j]
+                coupling_output = self.coupling_network(x[:, i, :], x[:, j, :])
+                coupling_sum += A_ij * coupling_output
 
-            output[:, i, :] = node_output + coupling_sum
+            output[:, i, 1] = node_output + coupling_sum    # v_dot = node + coupling
+
+        output[:, :, 0] = x[:, :, 1]    # x_dot = v
 
         return output
 
