@@ -3,47 +3,39 @@ from torch.utils.data import DataLoader
 import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from model import NetworkODEModel
+from dataset import NonlinearOscillatorDataset
 
 
-# Define the ODE system
-def f(t, x):
-    out = torch.empty_like(x)
-    out[:, 0] = x[:, 1]
-    out[:, 1] = -x[:, 0]
-    return out
+epochs = 1
+batch_size = 32
+adjacency_matrix = torch.tensor([[0, 1, 1],
+                                 [1, 0, 0],
+                                 [0, 1, 0]])
 
+# Create train and test data loaders:
+dataset_train = NonlinearOscillatorDataset(adjacency_matrix)
+dataloader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=True)
 
-class MLP(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, hidden_dim, num_hidden_layers):
-        super(MLP, self).__init__()
-        self.hidden_layers = [torch.nn.Linear(input_dim, hidden_dim)]
-        for i in range(num_hidden_layers - 1):
-            self.hidden_layers.append(torch.nn.Linear(hidden_dim, hidden_dim))
-        self.output_layer = torch.nn.Linear(hidden_dim, output_dim)
-        self.activation = torch.nn.LeakyReLU()
+dataset_test = NonlinearOscillatorDataset(adjacency_matrix, n_samples=100)
+dataloader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
 
-    def forward(self, t, x):
-        for layer in self.hidden_layers:
-            x = self.activation(layer(x))
-        x = self.output_layer(x)
-        return x
+# Define the model:
+num_nodes = adjacency_matrix.shape[0]
+hidden_dim_node = 50
+num_hidden_layers_node = 2
+hidden_dim_coupling = 4
+num_hidden_layers_coupling = 4
 
+model = NetworkODEModel(num_nodes=num_nodes,
+                        input_dim=2,
+                        output_dim=1,
+                        hidden_dim_node=hidden_dim_node,
+                        num_hidden_layers_node=num_hidden_layers_node,
+                        hidden_dim_coupling=hidden_dim_coupling,
+                        num_hidden_layers_coupling=num_hidden_layers_coupling)
 
-epochs = 300
-step_size = 0.1
-n_forecast = 10
-N_train = 1000
-batch_size = 100
-x_train = 2 * torch.rand(N_train, 2) - 1
-
-# create a dataloader from x_train
-dataloader = DataLoader(x_train, batch_size=batch_size, shuffle=True)
-model = MLP(2, 2, 64, 2)
-
-# Train the model using x_train as initial conditions. For each sample simulate the ODE system for 5 time units.
-# The target is the solution of the ODE system at all time steps. Minimize a MSE loss over all simulated time steps using f from above to create ground truth
-# trajectories. Use an Adam optimizer with a learning rate of 1e-3.
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.02)
 criterion = torch.nn.MSELoss()
 model.train()
 for epoch in tqdm(range(epochs)):
