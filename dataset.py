@@ -31,16 +31,16 @@ class NonlinearOscillatorDataset(Dataset):
         self.n_samples = n_samples
         self.n_forecast = n_forecast
         self.delta = delta
+        self.t = torch.linspace(0, self.n_forecast * self.delta, self.n_forecast + 1)
         self.data = self.create_data()
 
-    def create_dataloader(self):
+    def create_data(self):
         num_nodes = self.adjacency_matrix.shape[0]
         oscillator = NonlinearOscillator(self.adjacency_matrix)
         x_train = 2 * torch.rand(self.n_samples, num_nodes, 2) - 1
-        t = torch.arange(0, self.n_forecast, self.delta)
         data = []
         for x0 in x_train:
-            x = oscillator.ode_solve(x0, t)
+            x = oscillator.ode_solve(x0, self.t)
             data.append(x)
         return torch.stack(data)
 
@@ -48,4 +48,4 @@ class NonlinearOscillatorDataset(Dataset):
         return self.n_samples
 
     def __getitem__(self, idx):
-        return self.data[idx, 1:, :, :], self.data[idx, 0, :, :]
+        return self.data[idx, 0, :, :], self.data[idx, 1:, :, :]
