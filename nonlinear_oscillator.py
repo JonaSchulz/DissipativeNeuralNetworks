@@ -1,4 +1,4 @@
-from model import NonlinearOscillator
+from dataset import NonlinearOscillator
 import matplotlib.pyplot as plt
 import torch
 

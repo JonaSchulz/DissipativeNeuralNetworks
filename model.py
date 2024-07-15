@@ -76,6 +76,7 @@ class NetworkODEModel(nn.Module):
             node_output = self.node_network(x[:, i, :])
             coupling_sum = torch.zeros((batch_size, self.output_dim_nn), device=x.device)
 
+            # TODO: parallelize by feeding all pairs of x_i, x_j to the coupling network at the same time
             for j in range(self.num_nodes):
                 # Use the adjacency matrix element
                 A_ij = adjacency_matrix[i, j]

@@ -1,22 +1,36 @@
-from torchdiffeq import odeint
 from torch.utils.data import DataLoader
 import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from model import NetworkODEModel, SparsityLoss
-from dataset import NonlinearOscillatorDataset
+from dataset import NonlinearOscillatorDataset, NonlinearOscillator
 
 
-epochs = 1
-test_interval = 1
-batch_size = 4
+model_save_path = "model.pth"
+epochs = 1000
+alpha = 0.01
+test_interval = 100
+batch_size = 16
 n_forecast = 5
 delta = 0.1
-n_samples_train = 20
-n_samples_test = 10
+n_samples_train = 200
+n_samples_test = 50
+
 adjacency_matrix = torch.tensor([[0, 1, 1],
                                  [1, 0, 0],
                                  [0, 1, 0]])
+
+# adjacency_matrix = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+#                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+#                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+#                                  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+#                                  [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+#                                  [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+#                                  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+#                                  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+#                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+#                                  [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+#                                  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
 
 # Create train and test data loaders:
 dataset_train = NonlinearOscillatorDataset(adjacency_matrix, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta)
@@ -47,6 +61,9 @@ criterion = SparsityLoss(model, alpha=0.0)
 # Train the model:
 model.train()
 for epoch in tqdm(range(epochs)):
+    if epoch >= epochs // 2:
+        criterion.alpha = alpha
+
     for x0, x_gt in dataloader_train:
         optimizer.zero_grad()
         x_pred = model(x0, dataset_train.t)
@@ -64,15 +81,19 @@ for epoch in tqdm(range(epochs)):
             print(f'Epoch {epoch}: Test loss = {loss_test / len(dataloader_test)}')
 
 
+torch.save(model.state_dict(), model_save_path)
+
 # plot the ground-truth and predicted trajectories of each node for a sample from the test dataset in three subplots
 model.eval()
-x0, x_gt = next(iter(dataloader_test))
-t = torch.linspace(0, 10, 50)
-x_pred = model(x0, t)
+oscillator = NonlinearOscillator(adjacency_matrix)
+x0, _ = next(iter(dataloader_test))
+t = torch.linspace(0, 50, 100)
+x_gt = oscillator.ode_solve(x0[0], t)
+x_pred = model(x0, t)[0]
 fig, axs = plt.subplots(3, 1, figsize=(10, 10))
 for i in range(num_nodes):
-    axs[i].plot(x_gt[0, :, i, 0].detach().numpy(), x_gt[0, :, i, 1].detach().numpy(), label=f'Node {i + 1} GT')
-    axs[i].plot(x_pred[0, :, i, 0].detach().numpy(), x_pred[0, :, i, 1].detach().numpy(), label=f'Node {i + 1} Pred')
+    axs[i].plot(x_gt[:, i, 0].detach().numpy(), x_gt[:, i, 1].detach().numpy(), label=f'Node {i + 1} GT')
+    axs[i].plot(x_pred[:, i, 0].detach().numpy(), x_pred[:, i, 1].detach().numpy(), label=f'Node {i + 1} Pred')
     axs[i].set_xlabel('Position')
     axs[i].set_ylabel('Velocity')
     axs[i].legend()
