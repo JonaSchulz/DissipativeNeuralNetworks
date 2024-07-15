@@ -7,7 +7,7 @@ from torchdiffeq import odeint
 class NodeNetwork(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, num_hidden_layers):
         super(NodeNetwork, self).__init__()
-        self.hidden_layers = [nn.Linear(input_dim, hidden_dim)]
+        self.hidden_layers = nn.ModuleList([nn.Linear(input_dim, hidden_dim)])
         for i in range(num_hidden_layers - 1):
             self.hidden_layers.append(nn.Linear(hidden_dim, hidden_dim))
         self.output_layer = nn.Linear(hidden_dim, output_dim)
@@ -23,14 +23,13 @@ class NodeNetwork(nn.Module):
 class CouplingNetwork(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, num_hidden_layers):
         super(CouplingNetwork, self).__init__()
-        self.hidden_layers = [nn.Linear(input_dim, hidden_dim)]
+        self.hidden_layers = nn.ModuleList([nn.Linear(input_dim, hidden_dim)])
         for i in range(num_hidden_layers - 1):
             self.hidden_layers.append(nn.Linear(hidden_dim, hidden_dim))
         self.output_layer = nn.Linear(hidden_dim, output_dim)
         self.activation = nn.LeakyReLU()
 
-    def forward(self, x1, x2):
-        x = torch.cat((x1, x2), dim=-1)
+    def forward(self, x):
         for layer in self.hidden_layers:
             x = self.activation(layer(x))
         x = self.output_layer(x)
@@ -89,11 +88,43 @@ class NetworkODEModel(nn.Module):
 
         return output
 
+    def evaluate_parallel(self, t, x):
+        """
+
+        :param x: shape (batch_size, num_nodes, node_dim)
+        :return: x_dot with shape (batch_size, num_nodes, node_dim)
+        """
+
+        batch_size = x.size(0)
+        node_dim = x.size(-1)
+
+        # Initialize the output tensor
+        output = torch.zeros_like(x)
+
+        # Generate differentiable adjacency matrix from adjacency_matrix_parameter
+        adjacency_matrix = self.get_adjacency_matrix()
+
+        # Apply the node_network to each node:
+        node_output = self.node_network(x.reshape(-1, node_dim)).reshape(batch_size, self.num_nodes, self.output_dim_nn)
+
+        # Apply the coupling network to all pairs of nodes:
+        x1 = x.unsqueeze(1).repeat_interleave(self.num_nodes, dim=1)
+        x2 = x.unsqueeze(2).repeat_interleave(self.num_nodes, dim=2)
+        pairwise_combinations = torch.cat((x1.unsqueeze(3), x2.unsqueeze(3)), dim=3)
+        pairwise_combinations = pairwise_combinations.reshape(batch_size, self.num_nodes ** 2, 2, node_dim)
+        coupling_output = self.coupling_network(pairwise_combinations.reshape(batch_size * self.num_nodes ** 2, 2 * node_dim)).reshape(batch_size, self.num_nodes, self.num_nodes, self.output_dim_nn)
+
+        output[:, :, 1] = node_output[:, :, 0] + torch.sum(adjacency_matrix.unsqueeze(0).unsqueeze(3) * coupling_output, dim=2)[:, :, 0]    # v_dot = f(x_i) + sum(A_ij * g(x_i, x_j))
+
+        output[:, :, 0] = x[:, :, 1]    # x_dot = v
+
+        return output
+
     def get_adjacency_matrix(self):
-        return F.sigmoid(self.adjacency_matrix_parameter - torch.eye(self.num_nodes) / self.eps)
+        return F.sigmoid(self.adjacency_matrix_parameter - torch.eye(self.num_nodes).to(self.adjacency_matrix_parameter.device) / self.eps)
 
     def forward(self, x0, t):
-        x_pred = odeint(self.evaluate, x0, t)
+        x_pred = odeint(self.evaluate_parallel, x0, t)
         x_pred = x_pred.permute(1, 0, 2, 3)
         return x_pred
 
