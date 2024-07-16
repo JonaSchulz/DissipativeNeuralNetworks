@@ -6,9 +6,9 @@ from model import NetworkODEModel, SparsityLoss
 from dataset import NonlinearOscillatorDataset, NonlinearOscillator
 
 
-model_save_path = 'model_11node.pth'
-train_data_file = 'data/train_11node.npz'
-test_data_file = 'data/test_11node.npz'
+model_save_path = 'model_11node_single_initial_condition.pth'
+train_data_file = 'data/train_11node_single_initial_condition.npz'
+test_data_file = 'data/test_11node_single_initial_condition.npz'
 epochs = 1000
 alpha = 0.01
 test_interval = 10

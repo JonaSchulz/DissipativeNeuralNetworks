@@ -6,8 +6,9 @@ from model import NetworkODEModel, SparsityLoss
 from dataset import NonlinearOscillatorDataset, NonlinearOscillator
 
 
-model_save_path = 'model_11node.pth'
-test_data_file = 'data/test_11node.npz'
+model_save_path = 'model_11node_single_initial_condition.pth'
+test_data_file = 'data/test_11node_single_initial_condition.npz'
+test_data_file = 'data/test_3node.npz'
 alpha = 0.01
 batch_size = 1
 device = 'cuda'
@@ -23,7 +24,7 @@ num_hidden_layers_node = 2
 hidden_dim_coupling = 4
 num_hidden_layers_coupling = 1
 
-model = NetworkODEModel(num_nodes=num_nodes,
+model = NetworkODEModel(num_nodes=3,
                         input_dim=2,
                         output_dim_nn=1,
                         hidden_dim_node=hidden_dim_node,
@@ -31,16 +32,25 @@ model = NetworkODEModel(num_nodes=num_nodes,
                         hidden_dim_coupling=hidden_dim_coupling,
                         num_hidden_layers_coupling=num_hidden_layers_coupling).to(device)
 
-model.load_state_dict(torch.load(model_save_path))
-
-# plot the ground-truth and predicted trajectories of each node for a sample from the test dataset in three subplots
+model.load(model_save_path, adjacency_matrix=dataset_test.adjacency_matrix)
 model.eval()
-oscillator = NonlinearOscillator(dataset_test.adjacency_matrix, device=device)
-x0, _ = next(iter(dataloader_test))
-x0 = x0.to(device)
-t = torch.linspace(0, 10, 100).to(device)
-x_gt = oscillator.ode_solve(x0[0], t).to(device)
-x_pred = model(x0, t)[0]
+
+with torch.no_grad():
+    # Plot the adjacency matrix:
+    plt.imshow(model.get_adjacency_matrix().cpu().numpy())
+    plt.show()
+
+    # Simulate a trajectory and test the model on it:
+    oscillator = NonlinearOscillator(dataset_test.adjacency_matrix, device=device)
+
+    x0, _ = dataset_test[0]     # Take initial condition from the test dataset
+    # x0 = 2 * torch.rand(model.num_nodes, 2) - 1     # Random initial condition
+    x0 = x0.unsqueeze(0).to(device)
+    t = torch.linspace(0, 10, 100).to(device)
+    x_gt = oscillator.ode_solve(x0[0], t).to(device)
+    x_pred = model(x0, t)[0]
+
+# Plot the ground-truth and predicted trajectories of each node:
 fig, axs = plt.subplots(3, 1, figsize=(10, 10))
 
 for i in range(3):
@@ -53,15 +63,16 @@ for i in range(3):
 plt.tight_layout()
 plt.show()
 
+# Plot the ground-truth and predicted state evolution over time of each node for a sample from the test dataset:
 fig, axs = plt.subplots(3, 1, figsize=(10, 10))
 
 for i in range(3):
-    axs[i].plot(t.cpu().numpy(), x_gt[:, i, 0].cpu().detach().numpy(), label=f'Node {i + 1} GT')
-    axs[i].plot(t.cpu().numpy(), x_pred[:, i, 0].cpu().detach().numpy(), label=f'Node {i + 1} Pred')
-    axs[i].plot(t.cpu().numpy(), x_gt[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} GT')
-    axs[i].plot(t.cpu().numpy(), x_pred[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} Pred')
+    axs[i].plot(t.cpu().numpy(), x_gt[:, i, 0].cpu().detach().numpy(), label=f'Node {i + 1} GT Position')
+    axs[i].plot(t.cpu().numpy(), x_pred[:, i, 0].cpu().detach().numpy(), label=f'Node {i + 1} Pred Position')
+    axs[i].plot(t.cpu().numpy(), x_gt[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} GT Velocity')
+    axs[i].plot(t.cpu().numpy(), x_pred[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} Pred Velocity')
     axs[i].set_xlabel('Time')
-    axs[i].set_ylabel('Position')
+    axs[i].set_ylabel('Position/Velocity')
     axs[i].legend()
 
 plt.tight_layout()

@@ -121,7 +121,16 @@ class NetworkODEModel(nn.Module):
         return output
 
     def get_adjacency_matrix(self):
-        return F.sigmoid(self.adjacency_matrix_parameter - torch.eye(self.num_nodes).to(self.adjacency_matrix_parameter.device) / self.eps)
+        A = F.sigmoid(self.adjacency_matrix_parameter - torch.eye(self.num_nodes).to(self.adjacency_matrix_parameter.device) / self.eps)
+        if not self.training:
+            A = torch.round(A)
+        return A
+
+    def load(self, file, adjacency_matrix=None):
+        state_dict = torch.load(file)
+        if adjacency_matrix is not None:
+            state_dict['adjacency_matrix_parameter'] = adjacency_matrix.to(self.adjacency_matrix_parameter.device)
+        self.load_state_dict(state_dict)
 
     def forward(self, x0, t):
         x_pred = odeint(self.evaluate_parallel, x0, t)
