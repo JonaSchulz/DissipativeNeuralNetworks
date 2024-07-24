@@ -111,11 +111,11 @@ class NetworkODEModel(nn.Module):
         x1 = x.unsqueeze(1).repeat_interleave(self.num_nodes, dim=1)
         x2 = x.unsqueeze(2).repeat_interleave(self.num_nodes, dim=2)
         pairwise_combinations = torch.cat((x1.unsqueeze(3), x2.unsqueeze(3)), dim=3)
-        pairwise_combinations = pairwise_combinations.reshape(batch_size, self.num_nodes ** 2, 2, node_dim)
-        coupling_output = self.coupling_network(pairwise_combinations.reshape(batch_size * self.num_nodes ** 2, 2 * node_dim)).reshape(batch_size, self.num_nodes, self.num_nodes, self.output_dim_nn)
+        pairwise_combinations = pairwise_combinations.reshape(batch_size, self.num_nodes ** 2, 2 * node_dim)
+        coupling_output = self.coupling_network(pairwise_combinations)
+        coupling_output = coupling_output.reshape(batch_size, self.num_nodes, self.num_nodes, self.output_dim_nn)
 
         output[:, :, 1] = node_output[:, :, 0] + torch.sum(adjacency_matrix.unsqueeze(0).unsqueeze(3) * coupling_output, dim=2)[:, :, 0]    # v_dot = f(x_i) + sum(A_ij * g(x_i, x_j))
-
         output[:, :, 0] = x[:, :, 1]    # x_dot = v
 
         return output

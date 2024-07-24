@@ -8,7 +8,7 @@ from dataset import NonlinearOscillatorDataset, NonlinearOscillator
 
 model_save_path = 'model_11node_single_initial_condition.pth'
 test_data_file = 'data/test_11node_single_initial_condition.npz'
-test_data_file = 'data/test_3node.npz'
+# test_data_file = 'data/test_3node.npz'
 alpha = 0.01
 batch_size = 1
 device = 'cuda'
@@ -24,7 +24,7 @@ num_hidden_layers_node = 2
 hidden_dim_coupling = 4
 num_hidden_layers_coupling = 1
 
-model = NetworkODEModel(num_nodes=3,
+model = NetworkODEModel(num_nodes=11,
                         input_dim=2,
                         output_dim_nn=1,
                         hidden_dim_node=hidden_dim_node,
@@ -32,7 +32,7 @@ model = NetworkODEModel(num_nodes=3,
                         hidden_dim_coupling=hidden_dim_coupling,
                         num_hidden_layers_coupling=num_hidden_layers_coupling).to(device)
 
-model.load(model_save_path, adjacency_matrix=dataset_test.adjacency_matrix)
+model.load(model_save_path)
 model.eval()
 
 with torch.no_grad():

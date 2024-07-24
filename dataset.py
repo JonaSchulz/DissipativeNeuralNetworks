@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torchdiffeq import odeint
 from torch.utils.data import Dataset
 import json
+from functools import partial
 
 
 class NonlinearOscillator:
@@ -29,17 +30,56 @@ class NonlinearOscillator:
 
 
 class KuramotoOscillator:
-    def __init__(self, adjacency_matrix, omega=1, device='cpu'):
+    def __init__(self, adjacency_matrix, omega=1, device='cpu', k=1.0):
         self.adjacency_matrix = adjacency_matrix.to(device)
         self.device = device
         self.omega = omega
+        self.k = k
 
     def __call__(self, t, x):
         out = torch.empty_like(x).to(self.device)
-        out[:, 0] = self.omega + torch.mean(self.adjacency_matrix * torch.sin(x[:, 0].reshape(-1, 1) - x[:, 0].reshape(1, -1)), dim=1)
+        out[:, 0] = self.omega + self.k * torch.mean(self.adjacency_matrix * torch.sin(x[:, 0].reshape(1, -1) - x[:, 0].reshape(-1, 1)), dim=1)
         return out
 
     def ode_solve(self, x0, t):
+        return odeint(self, x0, t)
+
+
+class HarmonicOscillator:
+    def __init__(self, adjacency_matrix, c=1, m=1, k=1):
+        self.adjacency_matrix = adjacency_matrix
+        self.c = c
+        self.m = m
+        self.k = k
+
+    def __call__(self, t, x):
+        out = torch.empty_like(x)
+        out[:, 0] = x[:, 1]
+        out[:, 1] = -self.c / self.m * x[:, 1] - self.k / self.m * x[:, 0]
+        out[:, 1] -= torch.sum(self.adjacency_matrix * (x[:, 1].reshape(-1, 1) - x[:, 1].reshape(1, -1)), dim=1)
+        return out
+
+    def ode_solve(self, x0, t):
+        return odeint(self, x0, t)
+
+
+class RingNetwork:
+    def __init__(self, num_nodes, alpha=1.0, beta=1.0):
+        self.num_nodes = num_nodes
+        self.alpha = alpha
+        self.beta = beta
+        self.time_step = 0
+        self.u = None
+
+    def __call__(self, t, x):
+        out = torch.empty_like(x)
+        out[:, 0] = -self.alpha * x[:, 0] ** 3 + self.beta * (x[:, 0].roll(1, 0) - x[:, 0])
+        if self.u is not None:
+            out[0, 0] += self.u(t)
+        return out
+
+    def ode_solve(self, x0, t, u=None):
+        self.u = u
         return odeint(self, x0, t)
 
 
