@@ -23,7 +23,7 @@ adjacency_matrix = torch.tensor([[0, 1, 1],
 
 oscillator = NonlinearOscillator(adjacency_matrix)
 oscillator = HarmonicOscillator(adjacency_matrix, c=1, m=1, k=1)
-oscillator = RingNetwork(num_nodes=num_nodes, alpha=0.01, beta=1)
+oscillator = RingNetwork(num_nodes=num_nodes, alpha=0.01, beta=0.05)
 
 t = torch.arange(0, 300, 0.1)
 x0 = torch.tensor([[0.9, 0.],
@@ -45,7 +45,10 @@ def u(t, eps=1.0):
         return 1.0
     return 0.0
 
-x = oscillator.ode_solve(x0, t, u=u)
+def u2(t):
+    return 0.1 * torch.sin(0.1 * t)
+
+x = oscillator.ode_solve(x0, t, u=u2)
 
 for i in range(num_nodes):
     plt.plot(t, x[:, i, 0].detach().numpy())
