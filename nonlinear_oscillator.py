@@ -4,7 +4,7 @@ import torch
 
 
 # Define the adjacency matrix of shape (num_nodes, num_nodes)
-num_nodes = 20
+num_nodes = 3
 adjacency_matrix = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
@@ -23,22 +23,21 @@ adjacency_matrix = torch.tensor([[0, 1, 1],
 
 oscillator = NonlinearOscillator(adjacency_matrix)
 oscillator = HarmonicOscillator(adjacency_matrix, c=1, m=1, k=1)
-oscillator = RingNetwork(num_nodes=num_nodes, alpha=0.01, beta=0.05)
+oscillator = RingNetwork(num_nodes=num_nodes, adjacency_matrix=adjacency_matrix, alpha=1, beta=1, k=0.01)
 
-t = torch.arange(0, 300, 0.1)
-x0 = torch.tensor([[0.9, 0.],
-                   [0.8, 0.],
-                   [0.7, 0.]])
+t = torch.arange(0, 100, 0.1)
+# x0 = torch.tensor([[0.9, 0.],
+#                    [0.8, 0.],
+#                    [0.7, 0.]])
 
-x0 = torch.randn(num_nodes, 1)
-x0 = 2 * torch.rand(num_nodes, 1) - 1
+# x0 = torch.randn(num_nodes, 2)
+x0 = 2 * torch.rand(num_nodes, 2) - 1
 
-u = torch.sin(t)
+# u = torch.sin(t)
 
 # x0 = torch.tensor([[1.0, 0.] for i in range(11)])
 
 # Solve the ODE system for each node
-print(x0)
 
 def u(t, eps=1.0):
     if torch.abs(t.round() - t) < eps and not int(t.item()) % 50:
@@ -48,10 +47,10 @@ def u(t, eps=1.0):
 def u2(t):
     return 0.1 * torch.sin(0.1 * t)
 
-x = oscillator.ode_solve(x0, t, u=u2)
+x = oscillator.ode_solve(x0, t, u=None)
 
 for i in range(num_nodes):
-    plt.plot(t, x[:, i, 0].detach().numpy())
+    plt.plot(t, x[:, i, 1].detach().numpy())
 
 # plt.plot(t, x[:, 0, 1].detach().numpy(), label='v')
 plt.legend()
@@ -68,15 +67,5 @@ plt.show()
 # plt.tight_layout()
 # plt.show()
 
-# Define a storage function being the squared states of all nodes in the RingNetwork for every time step.
-# The storage function is a scalar function of time, i.e., it is a tensor of shape (num_time_steps, num_nodes).
-storage_function = x[:, :, 0] ** 2
-
-# Define a supply rate function
-supply_rate = x[:, :, 0].roll(1, 1) ** 2 - x[:, :, 0] ** 2
-
-# Plot the storage function and the integral of the supply rate from 0 to t for the first node
-plt.plot(t, storage_function[:, 0].detach().numpy(), label='Storage Function')
-plt.plot(t, torch.cumsum(supply_rate[:, 0], dim=0).detach().numpy(), label='Integral of Supply Rate')
-plt.legend()
+plt.plot(t, 0.72 * x[:, 0, 0].detach().numpy() * x[:, 2, 0].detach().numpy())
 plt.show()

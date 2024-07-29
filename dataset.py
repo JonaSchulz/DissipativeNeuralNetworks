@@ -64,18 +64,23 @@ class HarmonicOscillator:
 
 
 class RingNetwork:
-    def __init__(self, num_nodes, alpha=1.0, beta=1.0):
+    def __init__(self, num_nodes, adjacency_matrix, alpha=1.0, beta=1.0, k=1.0):
         self.num_nodes = num_nodes
+        self.adjacency_matrix = adjacency_matrix
         self.alpha = alpha
         self.beta = beta
+        self.k = k
         self.time_step = 0
         self.u = None
 
     def __call__(self, t, x):
         out = torch.empty_like(x)
-        out[:, 0] = -self.alpha * x[:, 0] ** 3 + self.beta * (x[:, 0].roll(1, 0) - x[:, 0])
+        out[:, 0] = x[:, 1]
+        out[:, 1] = -self.alpha * x[:, 0] ** 3 - self.k * x[:, 1] #+ self.beta * (x[:, 1].roll(1, 0) - x[:, 1])
+        out[:, 1] -= self.beta * torch.sum(self.adjacency_matrix * (x[:, 1].reshape(-1, 1) - x[:, 1].reshape(1, -1)), dim=1)
+
         if self.u is not None:
-            out[0, 0] += self.u(t)
+            out[0, 1] += self.u(t)
         return out
 
     def ode_solve(self, x0, t, u=None):
