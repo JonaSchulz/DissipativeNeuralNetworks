@@ -148,3 +148,33 @@ class SparsityLoss(nn.Module):
     def forward(self, x_pred, x_gt):
         adjacency_matrix = self.model.get_adjacency_matrix()
         return self.mse(x_pred, x_gt) + self.alpha * torch.norm(adjacency_matrix, p=1)
+
+
+class DissipativityLoss(nn.Module):
+    def __init__(self, dissipativity, adjacency_matrix):
+        super(DissipativityLoss, self).__init__()
+        self.dissipativity = dissipativity
+        self.adjacency_matrix = adjacency_matrix
+
+    def compute_u(self, x):
+        """
+        Compute the control input u for the dissipativity evaluation (u_i = sum_j A_ij * (x_j[2] - x_i[2]))
+        """
+        u_values = []
+        x = x.reshape(-1, x.shape[2], x.shape[3])
+        for t in range(x.shape[0]):
+            u_t = torch.sum(self.adjacency_matrix * (x[t, :, 1].reshape(-1, 1) - x[t, :, 1].reshape(1, -1)), dim=1)
+            u_values.append(u_t)
+        return torch.stack(u_values)
+
+    def forward(self, x_pred):
+        u = self.compute_u(x_pred)
+        dissipativity = self.dissipativity.evaluate_dissipativity(x_pred, u).flatten()
+        return F.relu(-dissipativity).mean()
+
+
+if __name__ == '__main__':
+    from dissipativity import Dissipativity
+
+    dissipativity = Dissipativity()
+    loss = DissipativityLoss()

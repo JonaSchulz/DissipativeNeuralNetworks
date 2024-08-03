@@ -64,8 +64,7 @@ class HarmonicOscillator:
 
 
 class RingNetwork:
-    def __init__(self, num_nodes, adjacency_matrix, alpha=1.0, beta=1.0, k=1.0):
-        self.num_nodes = num_nodes
+    def __init__(self, adjacency_matrix, alpha=1.0, beta=1.0, k=1.0):
         self.adjacency_matrix = adjacency_matrix
         self.alpha = alpha
         self.beta = beta
@@ -76,8 +75,9 @@ class RingNetwork:
     def __call__(self, t, x):
         out = torch.empty_like(x)
         out[:, 0] = x[:, 1]
-        out[:, 1] = -self.alpha * x[:, 0] ** 3 - self.k * x[:, 1] #+ self.beta * (x[:, 1].roll(1, 0) - x[:, 1])
-        out[:, 1] -= self.beta * torch.sum(self.adjacency_matrix * (x[:, 1].reshape(-1, 1) - x[:, 1].reshape(1, -1)), dim=1)
+        out[:, 1] = -self.alpha * x[:, 0] ** 3 - self.k * x[:, 1]   # + self.beta * (x[:, 1].roll(1, 0) - x[:, 1])
+        u = -self.beta * torch.sum(self.adjacency_matrix * (x[:, 1].reshape(-1, 1) - x[:, 1].reshape(1, -1)), dim=1)
+        out[:, 1] += u
 
         if self.u is not None:
             out[0, 1] += self.u(t)
@@ -89,7 +89,7 @@ class RingNetwork:
 
 
 class NonlinearOscillatorDataset(Dataset):
-    def __init__(self, file=None, adjacency_matrix=None, n_samples=1000, n_forecast=5, delta=0.1, single_initial_condition=False):
+    def __init__(self, file=None, adjacency_matrix=None, network_model=None, n_samples=1000, n_forecast=5, delta=0.1, single_initial_condition=False):
         if file is not None:
             data = np.load(file)
             data_info = file.replace('.npz', '_info.json')
@@ -105,6 +105,7 @@ class NonlinearOscillatorDataset(Dataset):
 
         else:
             self.adjacency_matrix = adjacency_matrix
+            self.network = network_model
             self.num_nodes = self.adjacency_matrix.shape[0]
             self.n_samples = n_samples
             self.n_forecast = n_forecast
@@ -116,19 +117,17 @@ class NonlinearOscillatorDataset(Dataset):
                 self.data = self.create_data()
 
     def create_data(self):
-        oscillator = NonlinearOscillator(self.adjacency_matrix)
         x_train = 2 * torch.rand(self.n_samples, self.num_nodes, 2) - 1
         data = []
         for x0 in x_train:
-            x = oscillator.ode_solve(x0, self.t)
+            x = self.network.ode_solve(x0, self.t)
             data.append(x)
         return torch.stack(data)
 
     def create_data_single_initial_condition(self):
-        oscillator = NonlinearOscillator(self.adjacency_matrix)
         t = torch.linspace(0, (self.n_samples + self.n_forecast) * self.delta, (self.n_samples + self.n_forecast))
         x0 = 2 * torch.rand(self.num_nodes, 2) - 1
-        x = oscillator.ode_solve(x0, t)
+        x = self.network.ode_solve(x0, t)
         data = []
         for i in range(len(t) - self.n_forecast):
             data.append(x[i:i + self.n_forecast + 1])
@@ -174,8 +173,10 @@ if __name__ == '__main__':
                                      [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
                                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
 
-    dataset_train = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
-    dataset_test = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, n_samples=n_samples_test, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
+    model = RingNetwork(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.1, k=0.1)
 
-    dataset_train.save_data('data/train_11node_single_initial_condition.npz')
-    dataset_test.save_data('data/test_11node_single_initial_condition.npz')
+    dataset_train = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
+    dataset_test = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_test, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
+
+    dataset_train.save_data('data/train_11node_new_single_initial_condition.npz')
+    dataset_test.save_data('data/test_11node_new_single_initial_condition.npz')

@@ -2,18 +2,20 @@ from torch.utils.data import DataLoader
 import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from model import NetworkODEModel, SparsityLoss
+from model import NetworkODEModel, SparsityLoss, DissipativityLoss
 from dataset import NonlinearOscillatorDataset, NonlinearOscillator
+from dissipativity import Dissipativity, NodeDynamics, L2Gain
 
 
-model_save_path = 'model_11node_single_initial_condition.pth'
-train_data_file = 'data/train_11node_single_initial_condition.npz'
-test_data_file = 'data/test_11node_single_initial_condition.npz'
-epochs = 1000
+model_save_path = 'model_11node_new_single_initial_condition.pth'
+train_data_file = 'data/train_11node_new_single_initial_condition.npz'
+test_data_file = 'data/test_11node_new_single_initial_condition.npz'
+epochs = 1
 alpha = 0.01
-test_interval = 10
+test_interval = 1
 batch_size = 32
-device = 'cuda'
+device = 'cpu'
+dissipativity_weight = 0.1
 
 # Create train and test data loaders:
 dataset_train = NonlinearOscillatorDataset(file=train_data_file)
@@ -21,6 +23,12 @@ dataloader_train = DataLoader(dataset_train, batch_size=batch_size, shuffle=True
 
 dataset_test = NonlinearOscillatorDataset(file=test_data_file)
 dataloader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
+
+# Dissipativity:
+dynamics = NodeDynamics(alpha=0.1, beta=0.1, k=0.1)
+supply_rate = L2Gain()
+dissipativity = Dissipativity(dynamics, supply_rate, degree=4)
+dissipativity.find_storage_function()
 
 # Define the model:
 num_nodes = dataset_train.num_nodes
@@ -41,6 +49,7 @@ model = NetworkODEModel(num_nodes=num_nodes,
 optimizer = torch.optim.Adam(model.parameters(), lr=0.02)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 criterion = SparsityLoss(model, alpha=0.0).to(device)
+criterion_dissipativity = DissipativityLoss(dissipativity, dataset_train.adjacency_matrix).to(device)
 
 # Train the model:
 model.train()
@@ -55,7 +64,7 @@ for epoch in tqdm(range(epochs)):
 
         optimizer.zero_grad()
         x_pred = model(x0, dataset_train.t.to(device))
-        loss = criterion(x_pred[:, 1:, :, :], x_gt)
+        loss = criterion(x_pred[:, 1:, :, :], x_gt) + dissipativity_weight * criterion_dissipativity(x_pred)
         loss.backward()
         optimizer.step()
 
