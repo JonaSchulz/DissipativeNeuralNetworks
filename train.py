@@ -64,7 +64,7 @@ for epoch in tqdm(range(epochs)):
 
         optimizer.zero_grad()
         x_pred = model(x0, dataset_train.t.to(device))
-        loss = criterion(x_pred[:, 1:, :, :], x_gt) + dissipativity_weight * criterion_dissipativity(x_pred)
+        loss = criterion(x_pred[:, 1:, :, :], x_gt) + dissipativity_weight * criterion_dissipativity(x_pred, model)
         loss.backward()
         optimizer.step()
 
@@ -86,7 +86,7 @@ for epoch in tqdm(range(epochs)):
             scheduler.step(val_loss)
             print(f'Epoch {epoch}: Test loss = {val_loss / len(dataloader_test)}')
 
-# torch.save(model.state_dict(), model_save_path)
+torch.save(model.state_dict(), model_save_path)
 
 # plot the ground-truth and predicted trajectories of each node for a sample from the test dataset in three subplots
 model.eval()
@@ -96,8 +96,8 @@ x0 = x0.to(device)
 t = torch.linspace(0, 5, 10).to(device)
 x_gt = oscillator.ode_solve(x0[0], t).to(device)
 x_pred = model(x0, t)[0]
-fig, axs = plt.subplots(11, 1, figsize=(10, 10))
-for i in range(num_nodes):
+fig, axs = plt.subplots(5, 1, figsize=(10, 10))
+for i in range(5):
     axs[i].plot(x_gt[:, i, 0].cpu().detach().numpy(), x_gt[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} GT')
     axs[i].plot(x_pred[:, i, 0].cpu().detach().numpy(), x_pred[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} Pred')
     axs[i].set_xlabel('Position')

@@ -165,11 +165,13 @@ class DissipativityLoss(nn.Module):
         for t in range(x.shape[0]):
             u_t = torch.sum(self.adjacency_matrix * (x[t, :, 1].reshape(-1, 1) - x[t, :, 1].reshape(1, -1)), dim=1)
             u_values.append(u_t)
-        return torch.stack(u_values)
+        return torch.stack(u_values).unsqueeze(-1)
 
-    def forward(self, x_pred):
+    def forward(self, x_pred, model):
         u = self.compute_u(x_pred)
-        dissipativity = self.dissipativity.evaluate_dissipativity(x_pred, u).flatten()
+        x_pred = x_pred.reshape(-1, x_pred.shape[2], x_pred.shape[3])
+        x_dot = model.evaluate_parallel(None, x_pred)
+        dissipativity = self.dissipativity.evaluate_dissipativity(x_pred, u, x_dot)
         return F.relu(-dissipativity).mean()
 
 
