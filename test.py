@@ -1,15 +1,13 @@
 from torch.utils.data import DataLoader
 import torch
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-from model import NetworkODEModel, SparsityLoss
-from dataset import NonlinearOscillatorDataset, NonlinearOscillator
+from dissnn.model import NetworkODEModel
+from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator
 
 
-model_save_path = 'model_11node_single_initial_condition.pth'
-test_data_file = 'data/test_11node_single_initial_condition.npz'
+model_save_path = 'model_files/model_oscillator1_11node.pth'
+test_data_file = 'data/oscillator1_11node/test.npz'
 # test_data_file = 'data/test_3node.npz'
-alpha = 0.01
 batch_size = 1
 device = 'cuda'
 
@@ -24,7 +22,7 @@ num_hidden_layers_node = 2
 hidden_dim_coupling = 4
 num_hidden_layers_coupling = 1
 
-model = NetworkODEModel(num_nodes=11,
+model = NetworkODEModel(num_nodes=num_nodes,
                         input_dim=2,
                         output_dim_nn=1,
                         hidden_dim_node=hidden_dim_node,

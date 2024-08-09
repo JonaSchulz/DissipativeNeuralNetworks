@@ -15,7 +15,7 @@ class NonlinearOscillator:
         self.a2 = a2
         self.a3 = a3
         self.a4 = a4
-        self.mu = mu
+        self.node_dim = 2
         self.device = device
 
     def __call__(self, t, x):
@@ -28,6 +28,15 @@ class NonlinearOscillator:
     def ode_solve(self, x0, t):
         return odeint(self, x0, t)
 
+    def info_dir(self):
+        return {
+            'a1': self.a1,
+            'a2': self.a2,
+            'a3': self.a3,
+            'a4': self.a4,
+            'node_dim': self.node_dim
+        }
+
 
 class KuramotoOscillator:
     def __init__(self, adjacency_matrix, omega=1, device='cpu', k=1.0):
@@ -35,6 +44,7 @@ class KuramotoOscillator:
         self.device = device
         self.omega = omega
         self.k = k
+        self.node_dim = 1
 
     def __call__(self, t, x):
         out = torch.empty_like(x).to(self.device)
@@ -44,6 +54,13 @@ class KuramotoOscillator:
     def ode_solve(self, x0, t):
         return odeint(self, x0, t)
 
+    def info_dir(self):
+        return {
+            'omega': self.omega,
+            'k': self.k,
+            'node_dim': self.node_dim
+        }
+
 
 class HarmonicOscillator:
     def __init__(self, adjacency_matrix, c=1, m=1, k=1):
@@ -51,6 +68,7 @@ class HarmonicOscillator:
         self.c = c
         self.m = m
         self.k = k
+        self.node_dim = 2
 
     def __call__(self, t, x):
         out = torch.empty_like(x)
@@ -62,15 +80,23 @@ class HarmonicOscillator:
     def ode_solve(self, x0, t):
         return odeint(self, x0, t)
 
+    def info_dir(self):
+        return {
+            'c': self.c,
+            'm': self.m,
+            'k': self.k,
+            'node_dim': self.node_dim
+        }
 
-class RingNetwork:
+
+class NonlinearOscillator2:
     def __init__(self, adjacency_matrix, alpha=1.0, beta=1.0, k=1.0):
         self.adjacency_matrix = adjacency_matrix
         self.alpha = alpha
         self.beta = beta
         self.k = k
-        self.time_step = 0
         self.u = None
+        self.node_dim = 2
 
     def __call__(self, t, x):
         out = torch.empty_like(x)
@@ -87,6 +113,14 @@ class RingNetwork:
         self.u = u
         return odeint(self, x0, t)
 
+    def info_dir(self):
+        return {
+            'alpha': self.alpha,
+            'beta': self.beta,
+            'k': self.k,
+            'node_dim': self.node_dim
+        }
+
 
 class NonlinearOscillatorDataset(Dataset):
     def __init__(self, file=None, adjacency_matrix=None, network_model=None, n_samples=1000, n_forecast=5, delta=0.1, single_initial_condition=False):
@@ -94,10 +128,10 @@ class NonlinearOscillatorDataset(Dataset):
             data = np.load(file)
             data_info = file.replace('.npz', '_info.json')
             with open(data_info, 'r') as f:
-                info = json.load(f)
-                self.n_samples = info['n_samples']
-                self.n_forecast = info['n_forecast']
-                self.delta = info['delta']
+                self.info = json.load(f)
+                self.n_samples = self.info['n_samples']
+                self.n_forecast = self.info['n_forecast']
+                self.delta = self.info['delta']
             self.data = torch.from_numpy(data['data'])
             self.t = torch.from_numpy(data['t'])
             self.adjacency_matrix = torch.from_numpy(data['adjacency_matrix'])
@@ -116,22 +150,27 @@ class NonlinearOscillatorDataset(Dataset):
             else:
                 self.data = self.create_data()
 
-    def create_data(self):
-        x_train = 2 * torch.rand(self.n_samples, self.num_nodes, 2) - 1
-        data = []
-        for x0 in x_train:
-            x = self.network.ode_solve(x0, self.t)
-            data.append(x)
-        return torch.stack(data)
-
     def create_data_single_initial_condition(self):
         t = torch.linspace(0, (self.n_samples + self.n_forecast) * self.delta, (self.n_samples + self.n_forecast))
-        x0 = 2 * torch.rand(self.num_nodes, 2) - 1
+        x0 = 2 * torch.rand(self.num_nodes, self.network.node_dim) - 1
         x = self.network.ode_solve(x0, t)
         data = []
         for i in range(len(t) - self.n_forecast):
             data.append(x[i:i + self.n_forecast + 1])
         return torch.stack(data)
+
+    def create_data(self, num_trajectories=10):
+        samples_per_trajectory = self.n_samples // num_trajectories
+        t = torch.linspace(0, (samples_per_trajectory + self.n_forecast) * self.delta, (samples_per_trajectory + self.n_forecast))
+        data = []
+        for trajectory in range(num_trajectories):
+            x0 = 2 * torch.rand(self.num_nodes, self.network.node_dim) - 1
+            x = self.network.ode_solve(x0, t)
+            for i in range(len(t) - self.n_forecast):
+                data.append(x[i:i + self.n_forecast + 1])
+        data = torch.stack(data)
+        self.n_samples = len(data)
+        return data
 
     def save_data(self, file):
         np.savez(file, data=self.data.numpy(), t=self.t.numpy(), adjacency_matrix=self.adjacency_matrix.numpy())
@@ -140,11 +179,13 @@ class NonlinearOscillatorDataset(Dataset):
             'n_forecast': self.n_forecast,
             'delta': self.delta
         }
+        info_dir.update(self.network.info_dir())
+        self.info = info_dir
         with open(file.replace('.npz', '_info.json'), 'w') as f:
             json.dump(info_dir, f)
 
     def __len__(self):
-        return self.n_samples
+        return len(self.data)
 
     def __getitem__(self, idx):
         return self.data[idx, 0, :, :], self.data[idx, 1:, :, :]
@@ -173,10 +214,11 @@ if __name__ == '__main__':
                                      [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
                                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
 
-    model = RingNetwork(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.1, k=0.1)
+    model = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.1, k=0.1)
+    # model = NonlinearOscillator(adjacency_matrix=adjacency_matrix)
 
     dataset_train = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
     dataset_test = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_test, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
 
-    dataset_train.save_data('data/train_11node_new_single_initial_condition.npz')
-    dataset_test.save_data('data/test_11node_new_single_initial_condition.npz')
+    dataset_train.save_data('data/oscillator2_11node_sic/train.npz')
+    dataset_test.save_data('data/oscillator2_11node_sic/test.npz')

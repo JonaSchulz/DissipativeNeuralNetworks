@@ -1,0 +1,7 @@
+torch
+torchdiffeq
+tqdm
+matplotlib
+numpy
+sympy
+mlflow

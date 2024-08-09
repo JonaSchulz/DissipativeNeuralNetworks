@@ -1,4 +1,4 @@
-from dataset import NonlinearOscillator, KuramotoOscillator, HarmonicOscillator
+from dissnn.dataset import KuramotoOscillator
 import matplotlib.pyplot as plt
 import torch
 

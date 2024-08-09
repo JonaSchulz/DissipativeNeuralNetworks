@@ -1,9 +1,7 @@
-from dataset import NonlinearOscillator, KuramotoOscillator, HarmonicOscillator, RingNetwork
-from dissipativity import NodeDynamics, L2Gain, Dissipativity
+from dissnn.dataset import RingNetwork
+from dissnn.dissipativity import NodeDynamics, L2Gain, Dissipativity
 import matplotlib.pyplot as plt
 import torch
-import numpy as np
-
 
 alpha, beta, k = 0.2, 1, 0.1
 
