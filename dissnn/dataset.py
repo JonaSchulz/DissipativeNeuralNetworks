@@ -214,11 +214,23 @@ if __name__ == '__main__':
                                      [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
                                      [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
 
-    model = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.1, k=0.1)
+    # adjacency_matrix = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    #                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    #                                  [0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+    #                                  [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+    #                                  [0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0],
+    #                                  [0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0],
+    #                                  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    #                                  [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+    #                                  [0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0],
+    #                                  [0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0],
+    #                                  [1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]])
+
+    model = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=1.0, beta=1.0, k=1.0)
     # model = NonlinearOscillator(adjacency_matrix=adjacency_matrix)
 
     dataset_train = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
     dataset_test = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_test, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
 
-    dataset_train.save_data('data/oscillator2_11node_sic/train.npz')
-    dataset_test.save_data('data/oscillator2_11node_sic/test.npz')
+    dataset_train.save_data('data/oscillator2_11node_3_sic/train.npz')
+    dataset_test.save_data('data/oscillator2_11node_3_sic/test.npz')

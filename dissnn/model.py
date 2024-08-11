@@ -45,11 +45,13 @@ class NetworkODEModel(nn.Module):
                  num_hidden_layers_node,
                  hidden_dim_coupling,
                  num_hidden_layers_coupling,
-                 eps=1e-5):
+                 eps=1e-5,
+                 adjacency_matrix=None):
         super(NetworkODEModel, self).__init__()
         self.node_network = NodeNetwork(input_dim, output_dim_nn, hidden_dim_node, num_hidden_layers_node)
         self.coupling_network = CouplingNetwork(2 * input_dim, output_dim_nn, hidden_dim_coupling, num_hidden_layers_coupling)
         self.adjacency_matrix_parameter = nn.Parameter(torch.zeros((num_nodes, num_nodes)))
+        self.adjacency_matrix = adjacency_matrix
         self.num_nodes = num_nodes
         self.output_dim_nn = output_dim_nn
         self.eps = eps
@@ -121,6 +123,8 @@ class NetworkODEModel(nn.Module):
         return output
 
     def get_adjacency_matrix(self):
+        if self.adjacency_matrix is not None:
+            return self.adjacency_matrix
         A = F.sigmoid(self.adjacency_matrix_parameter - torch.eye(self.num_nodes).to(self.adjacency_matrix_parameter.device) / self.eps)
         if not self.training:
             A = torch.round(A)
