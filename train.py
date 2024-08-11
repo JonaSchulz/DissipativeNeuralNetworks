@@ -9,9 +9,9 @@ from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator
 from dissnn.dissipativity import Dissipativity, NodeDynamics, L2Gain
 
 
-model_save_path = 'model_files/model_oscillator1_11node_sic.pth'
-train_data_file = 'data/oscillator1_11node_sic/train.npz'
-test_data_file = 'data/oscillator1_11node_sic/test.npz'
+model_save_path = 'model_files/model_oscillator2_11node_sic.pth'
+train_data_file = 'data/oscillator2_11node_sic/train.npz'
+test_data_file = 'data/oscillator2_11node_sic/test.npz'
 epochs = 200
 test_interval = 20
 batch_size = 32
@@ -50,7 +50,7 @@ model = NetworkODEModel(num_nodes=num_nodes,
 
 # Optimizer and loss:
 optimizer = torch.optim.Adam(model.parameters(), lr=0.02)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = epochs)
 criterion = SparsityLoss(model, alpha=sparsity_weight).to(device)
 criterion_dissipativity = DissipativityLoss(dissipativity, dataset_train.adjacency_matrix, device=device).to(device)
 
@@ -86,6 +86,8 @@ with mlflow.start_run():
             mlflow.log_metric("train/mse_loss", sparsity_loss.item())
             mlflow.log_metric("train/dissipativity_loss", dissipativity_loss.item())
 
+        scheduler.step()
+        
         if epoch % test_interval == 0:
             model.eval()
             with torch.no_grad():
@@ -109,7 +111,7 @@ with mlflow.start_run():
                     torch.save(model.state_dict(), model_save_path)
                     mlflow.pytorch.log_model(model, "best_model")
 
-                scheduler.step(val_loss)
+                #scheduler.step(val_loss)
                 print(f'Epoch {epoch}: Test loss = {val_loss / len(dataloader_test)}')
 
     torch.save(model.state_dict(), model_save_path)
