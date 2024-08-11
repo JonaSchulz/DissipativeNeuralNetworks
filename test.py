@@ -5,8 +5,8 @@ from dissnn.model import NetworkODEModel
 from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator
 
 
-model_save_path = 'model_files/model_oscillator1_11node.pth'
-test_data_file = 'data/oscillator1_11node/test.npz'
+model_save_path = 'model_files/model_oscillator1_11node_sic.pth'
+test_data_file = 'data/oscillator1_11node_sic/train.npz'
 # test_data_file = 'data/test_3node.npz'
 batch_size = 1
 device = 'cuda'

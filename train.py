@@ -9,15 +9,15 @@ from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator
 from dissnn.dissipativity import Dissipativity, NodeDynamics, L2Gain
 
 
-model_save_path = 'model_files/model_oscillator1_11node.pth'
-train_data_file = 'data/oscillator1_11node/train.npz'
-test_data_file = 'data/oscillator1_11node/test.npz'
+model_save_path = 'model_files/model_oscillator1_11node_sic.pth'
+train_data_file = 'data/oscillator1_11node_sic/train.npz'
+test_data_file = 'data/oscillator1_11node_sic/test.npz'
 epochs = 200
 test_interval = 20
 batch_size = 32
 device = 'cuda'
 sparsity_weight = 0.0
-dissipativity_weight = 0.1
+dissipativity_weight = 0.0
 
 # Create train and test data loaders:
 dataset_train = NonlinearOscillatorDataset(file=train_data_file)
