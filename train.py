@@ -8,7 +8,7 @@ import os
 
 from dissnn.model import NetworkODEModel, SparsityLoss, DissipativityLoss
 from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator
-from dissnn.dissipativity import Dissipativity, NodeDynamics, L2Gain
+from dissnn.dissipativity import Dissipativity, Oscillator2NodeDynamics, LotkaVolterraNodeDynamics, L2Gain
 
 
 model_save_path = 'model_files/model_oscillator2_11node_3_sic.pth'
@@ -21,6 +21,7 @@ device = 'cuda'
 sparsity_weight = 0.0
 dissipativity_weight = 0.0
 use_gt_adjacency_matrix = False
+NodeDynamics = LotkaVolterraNodeDynamics
 
 # Create train and test data loaders:
 dataset_train = NonlinearOscillatorDataset(file=train_data_file)
@@ -30,7 +31,7 @@ dataset_test = NonlinearOscillatorDataset(file=test_data_file)
 dataloader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
 
 # Dissipativity:
-dynamics = NodeDynamics(alpha=0.1, beta=0.1, k=0.1)
+dynamics = NodeDynamics(**dataset_train.info)
 supply_rate = L2Gain()
 dissipativity = Dissipativity(dynamics, supply_rate, degree=4)
 dissipativity.find_storage_function()

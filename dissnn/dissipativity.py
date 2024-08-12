@@ -5,8 +5,23 @@ from itertools import combinations_with_replacement
 import numpy as np
 
 
-class NodeDynamics:
-    def __init__(self, alpha=1, beta=1, k=1):
+class NonlinearOscillatorNodeDynamics:
+    def __init__(self, a1=0.2, a2=11.0, a3=11.0, a4=1.0):
+        self.a1 = a1
+        self.a2 = a2
+        self.a3 = a3
+        self.a4 = a4
+        self.x1, self.x2, self.u = sp.symbols('x1 x2 u')
+        self.input = sp.Matrix([self.u])
+        self.output = sp.Matrix([self.x2])
+        self.state = sp.Matrix([self.x1, self.x2])
+
+    def __call__(self):
+        return sp.Matrix([self.x2, -self.x1 - self.a1 * self.x2 * (self.a2 * self.x1 ** 4 - self.a3 * self.x1 + self.a4) + self.u])
+
+
+class NonlinearOscillator2NodeDynamics:
+    def __init__(self, alpha=1, beta=1, k=1, **kwargs):
         self.alpha = alpha
         self.beta = beta
         self.k = k
@@ -17,6 +32,23 @@ class NodeDynamics:
 
     def __call__(self):
         return sp.Matrix([self.x2, -self.alpha * self.x1 ** 3 - self.k * self.x2 + self.beta * self.u])
+
+
+class LotkaVolterraNodeDynamics:
+    def __init__(self, alpha=1.0, beta=1.0, gamma=1.0, delta=1.0, **kwargs):
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.delta = delta
+        self.x1, self.x2, self.u1, self.u2 = sp.symbols('x1 x2 u1 u2')
+        self.input = sp.Matrix([self.u1, self.u2])
+        self.output = sp.Matrix([self.x1, self.x2])
+        self.state = sp.Matrix([self.x1, self.x2])
+
+    def __call__(self):
+        return sp.Matrix([self.alpha * self.x1 - self.beta * self.x1 * self.x2 + self.u1,
+                          self.delta * self.x1 * self.x2 - self.gamma * self.x2 + self.u2])
+
 
 
 class L2Gain:
@@ -184,21 +216,10 @@ def generate_system_expressions(n, a, b, k, A, x):
 
 
 if __name__ == '__main__':
-    class BaseDynamics:
-        def __init__(self):
-            self.x1, self.u = sp.symbols('x1 u')
-            self.input = sp.Matrix([self.u])
-            self.output = sp.Matrix([self.x1])
-            self.state = sp.Matrix([self.x1])
-
-        def __call__(self):
-            return sp.Matrix([-self.x1 + self.u])
-
-
-    dyn = BaseDynamics()
+    dyn = NonlinearOscillatorNodeDynamics()
     supply = L2Gain()
-    diss = Dissipativity(dyn, supply, 2)
-    print(diss.find_storage_function())
+    diss = Dissipativity(dyn, supply, degree=4)
+
     print(diss.polynomial)
     print(diss.coefficients)
 
@@ -206,6 +227,8 @@ if __name__ == '__main__':
     print(diss.dissipativity)
 
     print(diss.dissipativity_pred)
+
+    print(diss.find_storage_function())
 
     import torch
     x = torch.tensor([[1.0], [2.0]])

@@ -9,7 +9,7 @@ from functools import partial
 
 
 class NonlinearOscillator:
-    def __init__(self, adjacency_matrix, a1=0.2, a2=11.0, a3=11.0, a4=1.0, mu=0.2, device='cpu'):
+    def __init__(self, adjacency_matrix, a1=0.2, a2=11.0, a3=11.0, a4=1.0, device='cpu'):
         self.adjacency_matrix = adjacency_matrix.to(device)
         self.a1 = a1
         self.a2 = a2
@@ -118,6 +118,36 @@ class NonlinearOscillator2:
             'alpha': self.alpha,
             'beta': self.beta,
             'k': self.k,
+            'node_dim': self.node_dim
+        }
+
+
+class LotkaVolterra:
+    def __init__(self, adjacency_matrix, alpha=1.0, beta=1.0, gamma=1.0, delta=1.0):
+        self.adjacency_matrix = adjacency_matrix
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.delta = delta
+        self.node_dim = 2
+
+    def __call__(self, t, x):
+        out = torch.empty_like(x)
+        out[:, 0] = self.alpha * x[:, 0] - self.beta * x[:, 0] * x[:, 1]
+        out[:, 1] = -self.gamma * x[:, 1] + self.delta * x[:, 0] * x[:, 1]
+        out[:, 0] -= torch.sum(self.adjacency_matrix * (x[:, 0].reshape(-1, 1) - x[:, 0].reshape(1, -1)), dim=1)
+        out[:, 1] -= torch.sum(self.adjacency_matrix * (x[:, 1].reshape(-1, 1) - x[:, 1].reshape(1, -1)), dim=1)
+        return out
+
+    def ode_solve(self, x0, t):
+        return odeint(self, x0, t)
+
+    def info_dir(self):
+        return {
+            'alpha': self.alpha,
+            'beta': self.beta,
+            'gamma': self.gamma,
+            'delta': self.delta,
             'node_dim': self.node_dim
         }
 
