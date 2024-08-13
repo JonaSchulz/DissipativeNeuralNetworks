@@ -3,6 +3,7 @@ import sympy as sp
 from sympy import lambdify
 from itertools import combinations_with_replacement
 import numpy as np
+import torch
 
 
 class NonlinearOscillatorNodeDynamics:
@@ -19,6 +20,21 @@ class NonlinearOscillatorNodeDynamics:
     def __call__(self):
         return sp.Matrix([self.x2, -self.x1 - self.a1 * self.x2 * (self.a2 * self.x1 ** 4 - self.a3 * self.x1 + self.a4) + self.u])
 
+    def compute_u(self, x, adjacency_matrix):
+        """
+        Compute the control input u for the dissipativity evaluation (u_i = sum_j A_ij * (x_j[2] - x_i[2]))
+
+        :param x: shape (time_steps, num_nodes, 2)
+        :param adjacency_matrix: shape (num_nodes, num_nodes)
+        :return: shape (time_steps, num_nodes, 1)
+        """
+
+        u_values = []
+        for t in range(x.shape[0]):
+            u_t = torch.sum(adjacency_matrix * (x[t, :, 1].reshape(-1, 1) - x[t, :, 1].reshape(1, -1)), dim=1)
+            u_values.append(u_t)
+        return torch.stack(u_values).unsqueeze(-1)
+
 
 class NonlinearOscillator2NodeDynamics:
     def __init__(self, alpha=1, beta=1, k=1, **kwargs):
@@ -32,6 +48,21 @@ class NonlinearOscillator2NodeDynamics:
 
     def __call__(self):
         return sp.Matrix([self.x2, -self.alpha * self.x1 ** 3 - self.k * self.x2 + self.beta * self.u])
+
+    def compute_u(self, x, adjacency_matrix):
+        """
+        Compute the control input u for the dissipativity evaluation (u_i = sum_j A_ij * (x_j[2] - x_i[2]))
+
+        :param x: shape (time_steps, num_nodes, 2)
+        :param adjacency_matrix: shape (num_nodes, num_nodes)
+        :return: shape (time_steps, num_nodes, 1)
+        """
+
+        u_values = []
+        for t in range(x.shape[0]):
+            u_t = -torch.sum(adjacency_matrix * (x[t, :, 1].reshape(-1, 1) - x[t, :, 1].reshape(1, -1)), dim=1)
+            u_values.append(u_t)
+        return torch.stack(u_values).unsqueeze(-1)
 
 
 class LotkaVolterraNodeDynamics:
@@ -134,7 +165,10 @@ class Dissipativity:
         # Combine all terms to form the polynomial
         polynomial = sp.Add(*polynomial_terms)
 
-        return list(coefficients), polynomial
+        # Sort coefficient by name length to avoid problems during evaluation of the polynomial
+        coefficients = sorted(list(coefficients), key=lambda coeff: -len(str(coeff)))
+
+        return coefficients, polynomial
 
     def compute_gradient(self):
         # Compute the gradient of the polynomial
@@ -159,33 +193,33 @@ class Dissipativity:
 
         return self.coefficient_values
 
-    def evaluate_storage(self, x, coefficient_values):
+    def evaluate_storage(self, x):
         # Evaluate the polynomial for x given by an array of shape [time_steps, num_nodes, state_dim]
         time_steps, num_nodes, state_dim = x.shape
         x = x.reshape(time_steps * num_nodes, state_dim)
-        polynomial = lambdify(list(self.state), self.polynomial.subs({coeff: value for coeff, value in zip(self.coefficients, coefficient_values)}))
+        polynomial = lambdify(list(self.state), self.polynomial.subs({coeff: value for coeff, value in zip(self.coefficients, self.coefficient_values)}))
         return polynomial(*x.T).reshape(time_steps, num_nodes)
 
     def evaluate_dissipativity(self, x, u, x_dot):
         # Evaluate the dissipativity inequality for x given by an array of shape [time_steps, num_nodes, state_dim]
         assert x.shape[-1] == self.state_dim, 'State dimension does not match'
         assert u.shape[-1] == self.input_dim, 'Input dimension does not match'
-        x = x.reshape(-1, self.state_dim)
-        u = u.reshape(-1, self.input_dim)
-        x_dot = x_dot.reshape(-1, self.state_dim)
+        # x = x.reshape(-1, self.state_dim)
+        # u = u.reshape(-1, self.input_dim)
+        # x_dot = x_dot.reshape(-1, self.state_dim)
 
         dissipativity_str = str(self.dissipativity_pred)
         for coeff, value in zip(self.coefficients, self.coefficient_values):
             dissipativity_str = dissipativity_str.replace(str(coeff), str(value))
 
         for i, x_dot_symbol in enumerate(self.x_dot_pred):
-            dissipativity_str = dissipativity_str.replace(str(x_dot_symbol), f'x_dot[:, {i}]')
+            dissipativity_str = dissipativity_str.replace(str(x_dot_symbol), f'x_dot[:, :, {i}]')
 
         for i, state in enumerate(self.state):
-            dissipativity_str = dissipativity_str.replace(str(state), f'x[:, {i}]')
+            dissipativity_str = dissipativity_str.replace(str(state), f'x[:, :, {i}]')
 
         for i, input in enumerate(self.input):
-            dissipativity_str = dissipativity_str.replace(str(input), f'u[:, {i}]')
+            dissipativity_str = dissipativity_str.replace(str(input), f'u[:, :, {i}]')
 
         dissipativity_str = self.supply_rate.eval_string(dissipativity_str)
 
@@ -213,66 +247,3 @@ def generate_system_expressions(n, a, b, k, A, x):
         derivatives.extend([dot_x_i1, dot_x_i2])
 
     return derivatives
-
-
-if __name__ == '__main__':
-    from dataset import NonlinearOscillator2
-    import torch
-
-    class Dynamics:
-        def __init__(self):
-            self.x, self.u = sp.symbols('x1'), sp.symbols('u')
-            self.input = sp.Matrix([self.u])
-            self.state = sp.Matrix([self.x])
-            self.output = sp.Matrix([self.x])
-
-        def __call__(self):
-            return sp.Matrix([self.x + self.u])
-
-
-    adjacency_matrix = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-                                     [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                                     [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-                                     [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-                                     [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
-                                     [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
-                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-                                     [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
-                                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
-
-    adjacency_matrix = torch.zeros_like(adjacency_matrix)
-
-    dyn = NonlinearOscillator2NodeDynamics(alpha=0.1, beta=0.01, k=0.01)
-    oscillator = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.01, k=0.01)
-    supply = L2Gain()
-    diss = Dissipativity(dyn, supply, degree=4)
-    diss.coefficient_values = [1.0, 1.0, 1.0]
-
-    print(diss.polynomial)
-    #print(diss.coefficients)
-
-    #print(diss.gradient)
-    #print(diss.dissipativity)
-
-    #print(diss.dissipativity_pred)
-
-    print(diss.find_storage_function())
-    print(supply.gamma_value)
-
-    t = torch.arange(0, 1, 0.1)
-    x0 = 2 * torch.rand(11, 2) - 1
-    x = oscillator.ode_solve(x0, t)
-    x_dot = torch.empty_like(x)
-
-    for i, _t in enumerate(t):
-        x_dot[i] = oscillator(_t, x[i])
-
-    x_dot[:, :, 0] = x[:, :, 1]
-
-    x = x.unsqueeze(0)
-    x_dot = x_dot.unsqueeze(0)
-
-    print(diss.evaluate_dissipativity(x, torch.zeros(1, x.shape[1], x.shape[2], 1), x_dot))
-

@@ -161,20 +161,9 @@ class DissipativityLoss(nn.Module):
         self.adjacency_matrix = adjacency_matrix.to(device)
         self.device = device
 
-    def compute_u(self, x):
-        """
-        Compute the control input u for the dissipativity evaluation (u_i = sum_j A_ij * (x_j[2] - x_i[2]))
-        """
-        u_values = []
-        x = x.reshape(-1, x.shape[2], x.shape[3])
-        for t in range(x.shape[0]):
-            u_t = torch.sum(self.adjacency_matrix * (x[t, :, 1].reshape(-1, 1) - x[t, :, 1].reshape(1, -1)), dim=1)
-            u_values.append(u_t)
-        return torch.stack(u_values).unsqueeze(-1).to(self.device)
-
     def forward(self, x_pred, model):
-        u = self.compute_u(x_pred)
         x_pred = x_pred.reshape(-1, x_pred.shape[2], x_pred.shape[3])
+        u = self.dissipativity.dynamics.compute_u(x_pred, self.adjacency_matrix).to(self.device)
         x_dot = model.evaluate_parallel(None, x_pred)
         dissipativity = self.dissipativity.evaluate_dissipativity(x_pred, u, x_dot)
         return F.relu(-dissipativity).mean()

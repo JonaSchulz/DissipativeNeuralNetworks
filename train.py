@@ -11,6 +11,11 @@ from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2
 from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, L2Gain
 
 
+# How to use:
+# - select train and test data files
+# - choose whether to use the ground truth adjacency matrix or learn it
+# - select correct ground truth node dynamics class
+
 model_save_path = 'model_files/model_oscillator2_11node_3_diss.pth'
 train_data_file = 'data/oscillator2_11node_3/train.npz'
 test_data_file = 'data/oscillator2_11node_3/test.npz'
@@ -19,7 +24,7 @@ test_interval = 5
 batch_size = 128
 device = 'cuda'
 sparsity_weight = 0.0
-dissipativity_weight = 0.0001
+dissipativity_weight = 0.0
 use_gt_adjacency_matrix = True
 NodeDynamics = NonlinearOscillator2NodeDynamics
 

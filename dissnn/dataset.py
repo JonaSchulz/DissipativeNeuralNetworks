@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from torchdiffeq import odeint
 from torch.utils.data import Dataset
 import json
-from functools import partial
 
 
 class NonlinearOscillator:
