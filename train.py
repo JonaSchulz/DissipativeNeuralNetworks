@@ -7,21 +7,21 @@ import tempfile
 import os
 
 from dissnn.model import NetworkODEModel, SparsityLoss, DissipativityLoss
-from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator
-from dissnn.dissipativity import Dissipativity, Oscillator2NodeDynamics, LotkaVolterraNodeDynamics, L2Gain
+from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2
+from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, L2Gain
 
 
-model_save_path = 'model_files/model_oscillator2_11node_3_sic.pth'
-train_data_file = 'data/oscillator2_11node_3_sic/train.npz'
-test_data_file = 'data/oscillator2_11node_3_sic/test.npz'
-epochs = 200
-test_interval = 20
-batch_size = 32
+model_save_path = 'model_files/model_oscillator2_11node_3_diss.pth'
+train_data_file = 'data/oscillator2_11node_3/train.npz'
+test_data_file = 'data/oscillator2_11node_3/test.npz'
+epochs = 20
+test_interval = 5
+batch_size = 128
 device = 'cuda'
 sparsity_weight = 0.0
-dissipativity_weight = 0.0
-use_gt_adjacency_matrix = False
-NodeDynamics = LotkaVolterraNodeDynamics
+dissipativity_weight = 0.0001
+use_gt_adjacency_matrix = True
+NodeDynamics = NonlinearOscillator2NodeDynamics
 
 # Create train and test data loaders:
 dataset_train = NonlinearOscillatorDataset(file=train_data_file)
@@ -142,7 +142,7 @@ with mlflow.start_run():
 
 # plot the ground-truth and predicted trajectories of each node for a sample from the test dataset in three subplots
 model.eval()
-oscillator = NonlinearOscillator(dataset_test.adjacency_matrix, device=device)
+oscillator = NonlinearOscillator2(dataset_test.adjacency_matrix.to(device), device=device, **dataset_test.info)
 x0, _ = next(iter(dataloader_test))
 x0 = x0.to(device)
 t = torch.linspace(0, 5, 100).to(device)

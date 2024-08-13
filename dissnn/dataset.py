@@ -90,7 +90,7 @@ class HarmonicOscillator:
 
 
 class NonlinearOscillator2:
-    def __init__(self, adjacency_matrix, alpha=1.0, beta=1.0, k=1.0):
+    def __init__(self, adjacency_matrix, alpha=1.0, beta=1.0, k=1.0, **kwargs):
         self.adjacency_matrix = adjacency_matrix
         self.alpha = alpha
         self.beta = beta
@@ -107,6 +107,18 @@ class NonlinearOscillator2:
 
         if self.u is not None:
             out[0, 1] += self.u(t)
+        return out
+
+    def evaluate_parallel(self, t, x):
+        out = torch.empty_like(x)
+        for i in range(x.shape[0]):
+            out[i, :, 0] = x[i, :, 1]
+            out[i, :, 1] = -self.alpha * x[i, :, 0] ** 3 - self.k * x[i, :, 1]   # + self.beta * (x[:, 1].roll(1, 0) - x[:, 1])
+            u = -self.beta * torch.sum(self.adjacency_matrix * (x[i, :, 1].reshape(-1, 1) - x[i, :, 1].reshape(1, -1)), dim=1)
+            out[i, :, 1] += u
+
+            if self.u is not None:
+                out[i, 0, 1] += self.u(t)
         return out
 
     def ode_solve(self, x0, t, u=None):
@@ -153,7 +165,8 @@ class LotkaVolterra:
 
 
 class NonlinearOscillatorDataset(Dataset):
-    def __init__(self, file=None, adjacency_matrix=None, network_model=None, n_samples=1000, n_forecast=5, delta=0.1, single_initial_condition=False):
+    def __init__(self, file=None, adjacency_matrix=None, network_model=None, n_samples=1000, n_forecast=5, delta=0.1,
+                 single_initial_condition=False, num_trajectories=10):
         if file is not None:
             data = np.load(file)
             data_info = file.replace('.npz', '_info.json')
@@ -178,7 +191,7 @@ class NonlinearOscillatorDataset(Dataset):
             if single_initial_condition:
                 self.data = self.create_data_single_initial_condition()
             else:
-                self.data = self.create_data()
+                self.data = self.create_data(num_trajectories)
 
     def create_data_single_initial_condition(self):
         t = torch.linspace(0, (self.n_samples + self.n_forecast) * self.delta, (self.n_samples + self.n_forecast))
@@ -225,8 +238,8 @@ if __name__ == '__main__':
     # Generate dataset:
     n_forecast = 5
     delta = 0.1
-    n_samples_train = 1000
-    n_samples_test = 50
+    n_samples_train = 5000
+    n_samples_test = 100
 
     adjacency_matrix = torch.tensor([[0, 1, 1],
                                      [1, 0, 0],
@@ -256,11 +269,11 @@ if __name__ == '__main__':
     #                                  [0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0],
     #                                  [1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]])
 
-    model = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=1.0, beta=1.0, k=1.0)
+    model = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.01, k=0.01)
     # model = NonlinearOscillator(adjacency_matrix=adjacency_matrix)
 
-    dataset_train = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
-    dataset_test = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_test, n_forecast=n_forecast, delta=delta, single_initial_condition=True)
+    #dataset_train = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta, single_initial_condition=False, num_trajectories=50)
+    dataset_test = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_test, n_forecast=n_forecast, delta=delta, single_initial_condition=False, num_trajectories=10)
 
-    dataset_train.save_data('data/oscillator2_11node_3_sic/train.npz')
-    dataset_test.save_data('data/oscillator2_11node_3_sic/test.npz')
+    #dataset_train.save_data('../data/oscillator2_11node_3/train.npz')
+    dataset_test.save_data('../data/oscillator2_11node_3/test.npz')

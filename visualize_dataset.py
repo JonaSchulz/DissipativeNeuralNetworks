@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from dissnn.dataset import NonlinearOscillatorDataset
 
 
-file = 'data/oscillator2_11node_3_sic/train.npz'
+file = 'data/oscillator2_11node_3/test.npz'
 dataset = NonlinearOscillatorDataset(file=file)
 dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
 

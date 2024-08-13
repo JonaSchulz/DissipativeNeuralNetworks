@@ -216,24 +216,63 @@ def generate_system_expressions(n, a, b, k, A, x):
 
 
 if __name__ == '__main__':
-    dyn = NonlinearOscillatorNodeDynamics()
+    from dataset import NonlinearOscillator2
+    import torch
+
+    class Dynamics:
+        def __init__(self):
+            self.x, self.u = sp.symbols('x1'), sp.symbols('u')
+            self.input = sp.Matrix([self.u])
+            self.state = sp.Matrix([self.x])
+            self.output = sp.Matrix([self.x])
+
+        def __call__(self):
+            return sp.Matrix([self.x + self.u])
+
+
+    adjacency_matrix = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+                                     [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+                                     [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+                                     [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+                                     [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                                     [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+                                     [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+                                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
+
+    adjacency_matrix = torch.zeros_like(adjacency_matrix)
+
+    dyn = NonlinearOscillator2NodeDynamics(alpha=0.1, beta=0.01, k=0.01)
+    oscillator = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.01, k=0.01)
     supply = L2Gain()
     diss = Dissipativity(dyn, supply, degree=4)
+    diss.coefficient_values = [1.0, 1.0, 1.0]
 
     print(diss.polynomial)
-    print(diss.coefficients)
+    #print(diss.coefficients)
 
-    print(diss.gradient)
-    print(diss.dissipativity)
+    #print(diss.gradient)
+    #print(diss.dissipativity)
 
-    print(diss.dissipativity_pred)
+    #print(diss.dissipativity_pred)
 
     print(diss.find_storage_function())
+    print(supply.gamma_value)
 
-    import torch
-    x = torch.tensor([[1.0], [2.0]])
-    u = torch.tensor([[0.0], [1.0]])
-    x_dot = torch.tensor([[-1.0], [-1.0]])
-    print(diss.evaluate_dissipativity(x, u, x_dot))
-    # grad = diss.evaluate_gradient(x)
-    # print(grad)
+    t = torch.arange(0, 1, 0.1)
+    x0 = 2 * torch.rand(11, 2) - 1
+    x = oscillator.ode_solve(x0, t)
+    x_dot = torch.empty_like(x)
+
+    for i, _t in enumerate(t):
+        x_dot[i] = oscillator(_t, x[i])
+
+    x_dot[:, :, 0] = x[:, :, 1]
+
+    x = x.unsqueeze(0)
+    x_dot = x_dot.unsqueeze(0)
+
+    print(diss.evaluate_dissipativity(x, torch.zeros(1, x.shape[1], x.shape[2], 1), x_dot))
+

@@ -31,7 +31,7 @@ num_nodes = adjacency_matrix.shape[0]
 
 # oscillator = NonlinearOscillator(adjacency_matrix)
 # oscillator = HarmonicOscillator(adjacency_matrix, c=1, m=1, k=1)
-oscillator = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.01, beta=0.01, k=0.0)
+oscillator = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.01, k=0.01)
 
 t = torch.arange(0, 1000, 0.1)
 # x0 = torch.tensor([[0.9, 0.],
