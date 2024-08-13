@@ -161,12 +161,19 @@ class DissipativityLoss(nn.Module):
         self.adjacency_matrix = adjacency_matrix.to(device)
         self.device = device
 
-    def forward(self, x_pred, model):
+    def forward(self, x_pred, model, aggregator='mean', relu=True):
         x_pred = x_pred.reshape(-1, x_pred.shape[2], x_pred.shape[3])
         u = self.dissipativity.dynamics.compute_u(x_pred, self.adjacency_matrix).to(self.device)
         x_dot = model.evaluate_parallel(None, x_pred)
         dissipativity = self.dissipativity.evaluate_dissipativity(x_pred, u, x_dot)
-        return F.relu(-dissipativity).mean()
+        if relu:
+            dissipativity = F.relu(-dissipativity)
+        if aggregator == 'mean':
+            return dissipativity.mean()
+        elif aggregator is None:
+            return dissipativity
+        else:
+            raise ValueError(f"Unknown aggregator: {aggregator}")
 
 
 if __name__ == '__main__':

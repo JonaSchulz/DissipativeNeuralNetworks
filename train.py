@@ -19,13 +19,14 @@ from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics
 model_save_path = 'model_files/model_oscillator2_11node_3_diss.pth'
 train_data_file = 'data/oscillator2_11node_3/train.npz'
 test_data_file = 'data/oscillator2_11node_3/test.npz'
-epochs = 20
-test_interval = 5
+epochs = 1
+test_interval = 1
 batch_size = 128
 device = 'cuda'
 sparsity_weight = 0.0
 dissipativity_weight = 0.0
 use_gt_adjacency_matrix = True
+storage_function_degree = 4
 NodeDynamics = NonlinearOscillator2NodeDynamics
 
 # Create train and test data loaders:
@@ -38,7 +39,7 @@ dataloader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
 # Dissipativity:
 dynamics = NodeDynamics(**dataset_train.info)
 supply_rate = L2Gain()
-dissipativity = Dissipativity(dynamics, supply_rate, degree=4)
+dissipativity = Dissipativity(dynamics, supply_rate, degree=storage_function_degree)
 dissipativity.find_storage_function()
 print(f"System is dissipative with L2 gain {supply_rate.gamma_value}")
 
@@ -73,9 +74,20 @@ with mlflow.start_run():
         'sparsity_weight': sparsity_weight,
         'dissipativity_weight': dissipativity_weight,
         'use_gt_adjacency_matrix': use_gt_adjacency_matrix,
+        'dataset_train': train_data_file,
+        'dataset_test': test_data_file,
+        'storage_function_degree': storage_function_degree,
+        'hidden_dim_node': hidden_dim_node,
+        'num_hidden_layers_node': num_hidden_layers_node,
+        'hidden_dim_coupling': hidden_dim_coupling,
+        'num_hidden_layers_coupling': num_hidden_layers_coupling,
+        'storage_coefficients': [str(i) for i in dissipativity.coefficients],
+        'storage_coefficient_values': dissipativity.coefficient_values
     }
     params.update(dataset_train.info)
     mlflow.log_params(params)
+    if isinstance(supply_rate, L2Gain):
+        mlflow.log_param('gamma_value', dissipativity.supply_rate.gamma_value)
 
     model.train()
     best_test_loss = float('inf')
