@@ -3,21 +3,30 @@ import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import mlflow
+import tempfile
+import os
 
 from dissnn.model import NetworkODEModel, SparsityLoss, DissipativityLoss
-from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator
-from dissnn.dissipativity import Dissipativity, NodeDynamics, L2Gain
+from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2, NonlinearOscillator3
+from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, NonlinearOscillator3NodeDynamics, L2Gain
 
 
-model_save_path = 'model_files/model_oscillator2_11node_sic.pth'
-train_data_file = 'data/oscillator2_11node_sic/train.npz'
-test_data_file = 'data/oscillator2_11node_sic/test.npz'
-epochs = 200
-test_interval = 20
-batch_size = 32
+# How to use:
+# - select train and test data files
+# - choose whether to use the ground truth adjacency matrix or learn it
+# - select correct ground truth node dynamics class
+
+model_save_path = 'model_files/model_oscillator3_11node_diss_0001.pth'
+train_data_file = 'data/oscillator3_11node/train.npz'
+test_data_file = 'data/oscillator3_11node/test.npz'
+epochs = 20
+test_interval = 5
+batch_size = 128
 device = 'cuda'
 sparsity_weight = 0.0
-dissipativity_weight = 0.0
+dissipativity_weight = 0.001
+use_gt_adjacency_matrix = True
+NodeDynamics = NonlinearOscillator3NodeDynamics
 
 # Create train and test data loaders:
 dataset_train = NonlinearOscillatorDataset(file=train_data_file)
@@ -27,7 +36,7 @@ dataset_test = NonlinearOscillatorDataset(file=test_data_file)
 dataloader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
 
 # Dissipativity:
-dynamics = NodeDynamics(alpha=0.1, beta=0.1, k=0.1)
+dynamics = NodeDynamics(**dataset_train.info)
 supply_rate = L2Gain()
 dissipativity = Dissipativity(dynamics, supply_rate, degree=4)
 dissipativity.find_storage_function()
@@ -39,6 +48,7 @@ hidden_dim_node = 50
 num_hidden_layers_node = 2
 hidden_dim_coupling = 4
 num_hidden_layers_coupling = 1
+adjacency_matrix = dataset_train.adjacency_matrix.to(float).to(device) if use_gt_adjacency_matrix else None
 
 model = NetworkODEModel(num_nodes=num_nodes,
                         input_dim=2,
@@ -46,11 +56,12 @@ model = NetworkODEModel(num_nodes=num_nodes,
                         hidden_dim_node=hidden_dim_node,
                         num_hidden_layers_node=num_hidden_layers_node,
                         hidden_dim_coupling=hidden_dim_coupling,
-                        num_hidden_layers_coupling=num_hidden_layers_coupling).to(device)
+                        num_hidden_layers_coupling=num_hidden_layers_coupling,
+                        adjacency_matrix=adjacency_matrix).to(device)
 
 # Optimizer and loss:
 optimizer = torch.optim.Adam(model.parameters(), lr=0.02)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = epochs)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 criterion = SparsityLoss(model, alpha=sparsity_weight).to(device)
 criterion_dissipativity = DissipativityLoss(dissipativity, dataset_train.adjacency_matrix, device=device).to(device)
 
@@ -60,7 +71,8 @@ with mlflow.start_run():
         'epochs': epochs,
         'batch_size': batch_size,
         'sparsity_weight': sparsity_weight,
-        'dissipativity_weight': dissipativity_weight
+        'dissipativity_weight': dissipativity_weight,
+        'use_gt_adjacency_matrix': use_gt_adjacency_matrix,
     }
     params.update(dataset_train.info)
     mlflow.log_params(params)
@@ -89,6 +101,20 @@ with mlflow.start_run():
         scheduler.step()
         
         if epoch % test_interval == 0:
+            # Log the adjacency matrix as an image to MLflow:
+            adjacency_matrix = model.get_adjacency_matrix().detach().cpu().numpy()
+            plt.imshow(adjacency_matrix)
+
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp:
+                plt.savefig(temp.name)
+                temp.close()
+                # Log the temporary file as an artifact to MLflow
+                mlflow.log_artifact(temp.name, "adjacency_matrix_images")
+                # Remove the temporary file
+                os.remove(temp.name)
+
+            plt.close()
+
             model.eval()
             with torch.no_grad():
                 val_loss = 0
@@ -111,15 +137,17 @@ with mlflow.start_run():
                     torch.save(model.state_dict(), model_save_path)
                     mlflow.pytorch.log_model(model, "best_model")
 
-                #scheduler.step(val_loss)
+                # scheduler.step(val_loss)
                 print(f'Epoch {epoch}: Test loss = {val_loss / len(dataloader_test)}')
+
+            model.train()
 
     torch.save(model.state_dict(), model_save_path)
     mlflow.pytorch.log_model(model, "final_model")
 
 # plot the ground-truth and predicted trajectories of each node for a sample from the test dataset in three subplots
 model.eval()
-oscillator = NonlinearOscillator(dataset_test.adjacency_matrix, device=device)
+oscillator = NonlinearOscillator3(dataset_test.adjacency_matrix.to(device), device=device, **dataset_test.info)
 x0, _ = next(iter(dataloader_test))
 x0 = x0.to(device)
 t = torch.linspace(0, 5, 100).to(device)
