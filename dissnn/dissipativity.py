@@ -204,9 +204,6 @@ class Dissipativity:
         # Evaluate the dissipativity inequality for x given by an array of shape [time_steps, num_nodes, state_dim]
         assert x.shape[-1] == self.state_dim, 'State dimension does not match'
         assert u.shape[-1] == self.input_dim, 'Input dimension does not match'
-        # x = x.reshape(-1, self.state_dim)
-        # u = u.reshape(-1, self.input_dim)
-        # x_dot = x_dot.reshape(-1, self.state_dim)
 
         dissipativity_str = str(self.dissipativity_pred)
         for coeff, value in zip(self.coefficients, self.coefficient_values):
@@ -226,24 +223,37 @@ class Dissipativity:
         return eval(dissipativity_str)
 
 
-def generate_system_expressions(n, a, b, k, A, x):
-    # List to hold the expressions for the derivatives
-    derivatives = []
+class PendulumDynamics:
+    def __init__(self, d, m, k):
+        self.d = d
+        self.m = m
+        self.k = k
 
-    # Construct the expressions for each system
-    for i in range(n):
-        # Variables for the current system
-        x_i1 = x[2 * i]  # x_{i1}
-        x_i2 = x[2 * i + 1]  # x_{i2}
+    def compute_u(self, x, adjacency_matrix):
+        """
+        Compute the control input u for the dissipativity evaluation (u_i = sum_j A_ij * (x_j[2] - x_i[2]))
 
-        # Expression for \dot{x_{i1}} = x_{i2}
-        dot_x_i1 = x_i2
+        :param x: shape (time_steps, num_nodes, 2)
+        :param adjacency_matrix: shape (num_nodes, num_nodes)
+        :return: shape (time_steps, num_nodes, 1)
+        """
 
-        # Expression for \dot{x_{i2}}
-        interaction_sum = b * sum(A[i, j] * (x[2 * j + 1] - x_i2) for j in range(n))
-        dot_x_i2 = -a * x_i1 ** 3 - k * x_i2 + interaction_sum
+        u_values = []
+        for t in range(x.shape[0]):
+            u_t = 1 / self.m * torch.sum(adjacency_matrix * torch.sin(x[t, :, 0].reshape(-1, 1) - x[t, :, 0].reshape(1, -1)), dim=1)
+            u_values.append(u_t)
+        return torch.stack(u_values).unsqueeze(-1)
 
-        # Add the expressions to the list
-        derivatives.extend([dot_x_i1, dot_x_i2])
 
-    return derivatives
+class DissipativityPendulum:
+    def __init__(self, d=1.0, m=1.0, k=1.0, **kwargs):
+        self.d = d
+        self.m = m
+        self.k = k
+        self.dynamics = PendulumDynamics(d, m, k)
+
+    def evaluate_storage(self, x):
+        return self.m * x[:, :, 1] ** 2 / 2 + self.k * (1 - torch.cos(x[:, :, 0]))
+
+    def evaluate_dissipativity(self, x, u, x_dot):
+        return x[:, :, 1] * u[:, :, 0] - self.k * torch.sin(x[:, :, 0]) * x_dot[:, :, 0] - self.m * x[:, :, 1] * x_dot[:, :, 1]

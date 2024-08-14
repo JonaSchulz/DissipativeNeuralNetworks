@@ -1,4 +1,4 @@
-from dissnn.dataset import LotkaVolterra, NonlinearOscillator2
+from dissnn.dataset import LotkaVolterra, NonlinearOscillator2, NonlinearPendulum
 import matplotlib.pyplot as plt
 import torch
 
@@ -31,9 +31,10 @@ num_nodes = adjacency_matrix.shape[0]
 
 # oscillator = NonlinearOscillator(adjacency_matrix)
 # oscillator = HarmonicOscillator(adjacency_matrix, c=1, m=1, k=1)
-oscillator = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.01, k=0.01)
+# oscillator = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.01, k=0.01)
+oscillator = NonlinearPendulum(adjacency_matrix=adjacency_matrix, d=0.0, m=1.0, k=1.0)
 
-t = torch.arange(0, 1000, 0.1)
+t = torch.arange(0, 50, 0.1)
 # x0 = torch.tensor([[0.9, 0.],
 #                    [0.8, 0.],
 #                    [0.7, 0.]])

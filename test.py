@@ -7,22 +7,23 @@ from urllib.parse import urlparse
 import ast
 
 from dissnn.model import NetworkODEModel, DissipativityLoss, SparsityLoss
-from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2
-from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, L2Gain
+from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2, NonlinearPendulum
+from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, L2Gain, DissipativityPendulum
 
-run_id = 'bc434f9cda7e472ca7776e65d855fcdd'
+run_id = '2359f9703054477a88247bd0dff216c2'
 t_max = 40.0  # Maximum time for simulation
 t_step = 0.01   # Time step for simulation
 axis_label_fontsize = 16
 title_fontsize = 18
 legend_fontsize = 14
 axis_tick_fontsize = 12
+pendulum = True
 plt.style.use('ggplot')
 
 with mlflow.start_run(run_id=run_id) as run:
     run_params = run.data.to_dictionary()['params']
 
-    model_file = os.path.join(urlparse(run.info.artifact_uri).path, 'final_model', 'data', 'model.pth')
+    model_file = os.path.join(urlparse(run.info.artifact_uri).path, 'best_model', 'data', 'model.pth')
     test_data_file = run_params['dataset_test']
     use_gt_adjacency_matrix = bool(run_params['use_gt_adjacency_matrix'])
     batch_size = 1
@@ -59,16 +60,22 @@ with mlflow.start_run(run_id=run_id) as run:
     model.eval()
 
     # Ground Truth Dynamical System:
-    oscillator = NonlinearOscillator2(dataset_test.adjacency_matrix.to(device), device=device, **dataset_test.info)
+    if pendulum:
+        oscillator = NonlinearPendulum(dataset_test.adjacency_matrix.to(device), device=device, **dataset_test.info)
+    else:
+        oscillator = NonlinearOscillator2(dataset_test.adjacency_matrix.to(device), device=device, **dataset_test.info)
 
     # Dissipativity:
-    dynamics = NodeDynamics(**dataset_test.info)
-    supply_rate = L2Gain()
-    dissipativity = Dissipativity(dynamics, supply_rate, degree=int(run_params['storage_function_degree']))
-    dissipativity.coefficients = ast.literal_eval(run_params['storage_coefficients'])
-    dissipativity.coefficient_values = ast.literal_eval(run_params['storage_coefficient_values'])
-    if isinstance(supply_rate, L2Gain):
-        dissipativity.supply_rate.gamma_value = float(run_params['gamma_value'])
+    if pendulum:
+        dissipativity = DissipativityPendulum(**dataset_test.info)
+    else:
+        dynamics = NodeDynamics(**dataset_test.info)
+        supply_rate = L2Gain()
+        dissipativity = Dissipativity(dynamics, supply_rate, degree=int(run_params['storage_function_degree']))
+        dissipativity.coefficients = ast.literal_eval(run_params['storage_coefficients'])
+        dissipativity.coefficient_values = ast.literal_eval(run_params['storage_coefficient_values'])
+        if isinstance(supply_rate, L2Gain):
+            dissipativity.supply_rate.gamma_value = float(run_params['gamma_value'])
     # dissipativity.find_storage_function()
 
     # Loss:

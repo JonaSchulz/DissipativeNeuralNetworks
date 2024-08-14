@@ -8,7 +8,7 @@ import os
 
 from dissnn.model import NetworkODEModel, SparsityLoss, DissipativityLoss
 from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2
-from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, L2Gain
+from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, L2Gain, Passivity, DissipativityPendulum
 
 
 # How to use:
@@ -16,12 +16,12 @@ from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics
 # - choose whether to use the ground truth adjacency matrix or learn it
 # - select correct ground truth node dynamics class
 
-model_save_path = 'model_files/model_oscillator2_11node_3_diss.pth'
-train_data_file = 'data/oscillator2_11node_3/train.npz'
-test_data_file = 'data/oscillator2_11node_3/test.npz'
-epochs = 1
-test_interval = 1
-batch_size = 128
+model_save_path = 'model_files/model_pendulum_3node.pth'
+train_data_file = 'data/pendulum_3node/train.npz'
+test_data_file = 'data/pendulum_3node/test.npz'
+epochs = 20
+test_interval = 5
+batch_size = 64
 device = 'cuda'
 sparsity_weight = 0.0
 dissipativity_weight = 0.0
@@ -37,18 +37,21 @@ dataset_test = NonlinearOscillatorDataset(file=test_data_file)
 dataloader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=False)
 
 # Dissipativity:
-dynamics = NodeDynamics(**dataset_train.info)
-supply_rate = L2Gain()
-dissipativity = Dissipativity(dynamics, supply_rate, degree=storage_function_degree)
-dissipativity.find_storage_function()
-print(f"System is dissipative with L2 gain {supply_rate.gamma_value}")
+# dynamics = NodeDynamics(**dataset_train.info)
+# supply_rate = L2Gain()
+# dissipativity = Dissipativity(dynamics, supply_rate, degree=storage_function_degree)
+# dissipativity.find_storage_function()
+# print(f"System is dissipative with L2 gain {supply_rate.gamma_value}")
+
+supply_rate = Passivity()
+dissipativity = DissipativityPendulum(**dataset_train.info)
 
 # Define the model:
 num_nodes = dataset_train.num_nodes
 hidden_dim_node = 50
-num_hidden_layers_node = 2
-hidden_dim_coupling = 4
-num_hidden_layers_coupling = 1
+num_hidden_layers_node = 4
+hidden_dim_coupling = 50
+num_hidden_layers_coupling = 4
 adjacency_matrix = dataset_train.adjacency_matrix.to(float).to(device) if use_gt_adjacency_matrix else None
 
 model = NetworkODEModel(num_nodes=num_nodes,
@@ -81,10 +84,11 @@ with mlflow.start_run():
         'num_hidden_layers_node': num_hidden_layers_node,
         'hidden_dim_coupling': hidden_dim_coupling,
         'num_hidden_layers_coupling': num_hidden_layers_coupling,
-        'storage_coefficients': [str(i) for i in dissipativity.coefficients],
-        'storage_coefficient_values': dissipativity.coefficient_values
     }
     params.update(dataset_train.info)
+    if isinstance(dissipativity, Dissipativity):
+        params.update({'storage_coefficients': [str(i) for i in dissipativity.coefficients],
+                       'storage_coefficient_values': dissipativity.coefficient_values})
     mlflow.log_params(params)
     if isinstance(supply_rate, L2Gain):
         mlflow.log_param('gamma_value', dissipativity.supply_rate.gamma_value)
@@ -109,6 +113,9 @@ with mlflow.start_run():
 
             mlflow.log_metric("train/mse_loss", sparsity_loss.item())
             mlflow.log_metric("train/dissipativity_loss", dissipativity_loss.item())
+
+            del x_pred, sparsity_loss, dissipativity_loss, loss
+            torch.cuda.empty_cache()
 
         scheduler.step()
         

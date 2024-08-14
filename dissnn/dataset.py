@@ -133,6 +133,51 @@ class NonlinearOscillator2:
         }
 
 
+class NonlinearPendulum:
+    def __init__(self, adjacency_matrix, d=1.0, m=1.0, k=1.0, **kwargs):
+        self.adjacency_matrix = adjacency_matrix
+        self.d = d
+        self.m = m
+        self.k = k
+        self.u = None
+        self.node_dim = 2
+
+    def __call__(self, t, x):
+        out = torch.empty_like(x)
+        out[:, 0] = x[:, 1]
+        out[:, 1] = -self.k / self.m * torch.sin(x[:, 0]) - self.d / self.m * x[:, 1]
+        u = 1 / self.m * torch.sum(self.adjacency_matrix * torch.sin(x[:, 0].reshape(-1, 1) - x[:, 0].reshape(1, -1)), dim=1)
+        out[:, 1] += u
+
+        if self.u is not None:
+            out[0, 1] += self.u(t)
+        return out
+
+    def evaluate_parallel(self, t, x):
+        out = torch.empty_like(x)
+        for i in range(x.shape[0]):
+            out[i, :, 0] = x[i, :, 1]
+            out[i, :, 1] = -self.alpha * x[i, :, 0] ** 3 - self.k * x[i, :, 1]   # + self.beta * (x[:, 1].roll(1, 0) - x[:, 1])
+            u = -self.beta * torch.sum(self.adjacency_matrix * (x[i, :, 1].reshape(-1, 1) - x[i, :, 1].reshape(1, -1)), dim=1)
+            out[i, :, 1] += u
+
+            if self.u is not None:
+                out[i, 0, 1] += self.u(t)
+        return out
+
+    def ode_solve(self, x0, t, u=None):
+        self.u = u
+        return odeint(self, x0, t)
+
+    def info_dir(self):
+        return {
+            'd': self.d,
+            'm': self.m,
+            'k': self.k,
+            'node_dim': self.node_dim
+        }
+
+
 class LotkaVolterra:
     def __init__(self, adjacency_matrix, alpha=1.0, beta=1.0, gamma=1.0, delta=1.0):
         self.adjacency_matrix = adjacency_matrix
@@ -244,17 +289,17 @@ if __name__ == '__main__':
                                      [1, 0, 0],
                                      [0, 1, 0]])
 
-    adjacency_matrix = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-                                     [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-                                     [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-                                     [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-                                     [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
-                                     [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
-                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-                                     [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
-                                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
+    # adjacency_matrix = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+    #                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    #                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    #                                  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+    #                                  [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+    #                                  [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+    #                                  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    #                                  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+    #                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    #                                  [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+    #                                  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
 
     # adjacency_matrix = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
     #                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
@@ -268,11 +313,14 @@ if __name__ == '__main__':
     #                                  [0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0],
     #                                  [1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]])
 
-    model = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.01, k=0.01)
+    # model = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.01, k=0.01)
     # model = NonlinearOscillator(adjacency_matrix=adjacency_matrix)
+    model = NonlinearPendulum(adjacency_matrix=adjacency_matrix, d=0.3, m=1.0, k=1.0)
 
-    #dataset_train = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta, single_initial_condition=False, num_trajectories=50)
+    dataset_train = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta, single_initial_condition=False, num_trajectories=50)
     dataset_test = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_test, n_forecast=n_forecast, delta=delta, single_initial_condition=False, num_trajectories=10)
 
-    #dataset_train.save_data('../data/oscillator2_11node_3/train.npz')
-    dataset_test.save_data('../data/oscillator2_11node_3/test.npz')
+    dataset_train.data[:, :, 0] = (dataset_train.data[:, :, 0] + 1) * 2 * torch.pi
+
+    dataset_train.save_data('../data/pendulum_3node/train.npz')
+    dataset_test.save_data('../data/pendulum_3node/test.npz')
