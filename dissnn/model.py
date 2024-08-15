@@ -77,7 +77,6 @@ class NetworkODEModel(nn.Module):
             node_output = self.node_network(x[:, i, :])
             coupling_sum = torch.zeros((batch_size, self.output_dim_nn), device=x.device)
 
-            # TODO: parallelize by feeding all pairs of x_i, x_j to the coupling network at the same time
             for j in range(self.num_nodes):
                 # Use the adjacency matrix element
                 A_ij = adjacency_matrix[i, j]
@@ -161,11 +160,14 @@ class DissipativityLoss(nn.Module):
         self.adjacency_matrix = adjacency_matrix.to(device)
         self.device = device
 
-    def forward(self, x_pred, model, aggregator='mean', relu=True):
+    def forward(self, x_pred, model, aggregator='mean', relu=True, return_percentage=False):
         x_pred = x_pred.reshape(-1, x_pred.shape[2], x_pred.shape[3])
         u = self.dissipativity.dynamics.compute_u(x_pred, self.adjacency_matrix).to(self.device)
         x_dot = model.evaluate_parallel(None, x_pred)
         dissipativity = self.dissipativity.evaluate_dissipativity(x_pred, u, x_dot)
+        if return_percentage:
+            percentage = torch.sum(dissipativity < 0) / dissipativity.numel()
+            return percentage
         if relu:
             dissipativity = F.relu(-dissipativity)
         if aggregator == 'mean':

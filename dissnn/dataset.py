@@ -108,18 +108,6 @@ class NonlinearOscillator2:
             out[0, 1] += self.u(t)
         return out
 
-    def evaluate_parallel(self, t, x):
-        out = torch.empty_like(x)
-        for i in range(x.shape[0]):
-            out[i, :, 0] = x[i, :, 1]
-            out[i, :, 1] = -self.alpha * x[i, :, 0] ** 3 - self.k * x[i, :, 1]   # + self.beta * (x[:, 1].roll(1, 0) - x[:, 1])
-            u = -self.beta * torch.sum(self.adjacency_matrix * (x[i, :, 1].reshape(-1, 1) - x[i, :, 1].reshape(1, -1)), dim=1)
-            out[i, :, 1] += u
-
-            if self.u is not None:
-                out[i, 0, 1] += self.u(t)
-        return out
-
     def ode_solve(self, x0, t, u=None):
         self.u = u
         return odeint(self, x0, t)
@@ -151,18 +139,6 @@ class NonlinearPendulum:
 
         if self.u is not None:
             out[0, 1] += self.u(t)
-        return out
-
-    def evaluate_parallel(self, t, x):
-        out = torch.empty_like(x)
-        for i in range(x.shape[0]):
-            out[i, :, 0] = x[i, :, 1]
-            out[i, :, 1] = -self.alpha * x[i, :, 0] ** 3 - self.k * x[i, :, 1]   # + self.beta * (x[:, 1].roll(1, 0) - x[:, 1])
-            u = -self.beta * torch.sum(self.adjacency_matrix * (x[i, :, 1].reshape(-1, 1) - x[i, :, 1].reshape(1, -1)), dim=1)
-            out[i, :, 1] += u
-
-            if self.u is not None:
-                out[i, 0, 1] += self.u(t)
         return out
 
     def ode_solve(self, x0, t, u=None):
@@ -246,12 +222,14 @@ class NonlinearOscillatorDataset(Dataset):
             data.append(x[i:i + self.n_forecast + 1])
         return torch.stack(data)
 
-    def create_data(self, num_trajectories=10):
+    def create_data(self, num_trajectories=10, angle=False):
         samples_per_trajectory = self.n_samples // num_trajectories
         t = torch.linspace(0, (samples_per_trajectory + self.n_forecast) * self.delta, (samples_per_trajectory + self.n_forecast))
         data = []
         for trajectory in range(num_trajectories):
             x0 = 2 * torch.rand(self.num_nodes, self.network.node_dim) - 1
+            if angle:
+                x0[:, 0] *= torch.pi
             x = self.network.ode_solve(x0, t)
             for i in range(len(t) - self.n_forecast):
                 data.append(x[i:i + self.n_forecast + 1])
@@ -282,25 +260,28 @@ if __name__ == '__main__':
     # Generate dataset:
     n_forecast = 5
     delta = 0.1
-    n_samples_train = 5000
-    n_samples_test = 100
+    n_samples_train = 50000
+    n_samples_test = 10000
 
     adjacency_matrix = torch.tensor([[0, 1, 1],
                                      [1, 0, 0],
                                      [0, 1, 0]])
 
-    # adjacency_matrix = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    #                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-    #                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-    #                                  [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-    #                                  [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
-    #                                  [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-    #                                  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
-    #                                  [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
-    #                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-    #                                  [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
-    #                                  [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
-
+    adjacency_matrix = torch.tensor([[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+                                     [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+                                     [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+                                     [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+                                     [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                                     [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0],
+                                     [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+                                     [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+                                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]])
+    import matplotlib.pyplot as plt
+    plt.imshow(adjacency_matrix.numpy())
+    plt.savefig('../adjacency_matrix.svg')
+    exit()
     # adjacency_matrix = torch.tensor([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
     #                                  [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
     #                                  [0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
@@ -315,12 +296,10 @@ if __name__ == '__main__':
 
     # model = NonlinearOscillator2(adjacency_matrix=adjacency_matrix, alpha=0.1, beta=0.01, k=0.01)
     # model = NonlinearOscillator(adjacency_matrix=adjacency_matrix)
-    model = NonlinearPendulum(adjacency_matrix=adjacency_matrix, d=0.3, m=1.0, k=1.0)
+    model = NonlinearPendulum(adjacency_matrix=adjacency_matrix, d=1.0, m=1.0, k=1.0)
 
     dataset_train = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_train, n_forecast=n_forecast, delta=delta, single_initial_condition=False, num_trajectories=50)
     dataset_test = NonlinearOscillatorDataset(adjacency_matrix=adjacency_matrix, network_model=model, n_samples=n_samples_test, n_forecast=n_forecast, delta=delta, single_initial_condition=False, num_trajectories=10)
 
-    dataset_train.data[:, :, 0] = (dataset_train.data[:, :, 0] + 1) * 2 * torch.pi
-
-    dataset_train.save_data('../data/pendulum_3node/train.npz')
-    dataset_test.save_data('../data/pendulum_3node/test.npz')
+    dataset_train.save_data('../data/pendulum_11node_2/train.npz')
+    dataset_test.save_data('../data/pendulum_11node_2/test.npz')

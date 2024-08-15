@@ -5,12 +5,16 @@ import mlflow
 import os
 from urllib.parse import urlparse
 import ast
+import tempfile
 
 from dissnn.model import NetworkODEModel, DissipativityLoss, SparsityLoss
 from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2, NonlinearPendulum
 from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, L2Gain, DissipativityPendulum
 
-run_id = '2359f9703054477a88247bd0dff216c2'
+run_id = 'ddfd01b9ae4a4edd96585acf668c2873'
+test_data_file = 'data/oscillator2_11node_3/val.npz'
+test_data_file = None
+do_eval = True
 t_max = 40.0  # Maximum time for simulation
 t_step = 0.01   # Time step for simulation
 axis_label_fontsize = 16
@@ -24,9 +28,10 @@ with mlflow.start_run(run_id=run_id) as run:
     run_params = run.data.to_dictionary()['params']
 
     model_file = os.path.join(urlparse(run.info.artifact_uri).path, 'best_model', 'data', 'model.pth')
-    test_data_file = run_params['dataset_test']
+    if test_data_file is None:
+        test_data_file = run_params['dataset_test']
     use_gt_adjacency_matrix = bool(run_params['use_gt_adjacency_matrix'])
-    batch_size = 1
+    batch_size = 128
     device = 'cuda'
     sparsity_weight = float(run_params['sparsity_weight'])
     dissipativity_weight = float(run_params['dissipativity_weight'])
@@ -76,6 +81,9 @@ with mlflow.start_run(run_id=run_id) as run:
         dissipativity.coefficient_values = ast.literal_eval(run_params['storage_coefficient_values'])
         if isinstance(supply_rate, L2Gain):
             dissipativity.supply_rate.gamma_value = float(run_params['gamma_value'])
+        print(dissipativity.polynomial)
+        print(dissipativity.coefficients)
+        print(dissipativity.coefficient_values)
     # dissipativity.find_storage_function()
 
     # Loss:
@@ -83,9 +91,34 @@ with mlflow.start_run(run_id=run_id) as run:
     criterion_dissipativity = DissipativityLoss(dissipativity, dataset_test.adjacency_matrix, device=device).to(device)
 
     with torch.no_grad():
+        # Evaluate on test set:
+        if do_eval:
+            model.eval()
+            loss_mse = 0.0
+            loss_dissipativity = 0.0
+            percentage = 0.0
+
+            for x0, x_gt in dataloader_test:
+                x0 = x0.to(device)
+                x_gt = x_gt.to(device)
+                x_pred = model(x0, dataset_test.t.to(device))
+                loss_mse += criterion(x_pred[:, 1:, :, :], x_gt)
+                loss_dissipativity += criterion_dissipativity(x_pred, model)
+                percentage += criterion_dissipativity(x_pred, model, return_percentage=True)
+
+            loss_mse /= len(dataloader_test)
+            loss_dissipativity /= len(dataloader_test)
+            percentage /= len(dataloader_test)
+            print(f'Test MSE Loss: {loss_mse.item()}')
+            print(f'Test Dissipativity Loss: {loss_dissipativity.item()}')
+            print(f'Test Dissipativity Violation Percentage: {percentage.item()}')
+            mlflow.log_metric('test/mse_loss_eval', loss_mse.item())
+            mlflow.log_metric('test/dissipativity_loss_eval', loss_dissipativity.item())
+            mlflow.log_metric('test/dissipativity_violation_percentage_eval', percentage.item())
+
         # Simulate a trajectory and test the model on it:
         x0, _ = next(iter(dataloader_test))
-        x0 = x0.to(device)
+        x0 = x0.to(device)[0].unsqueeze(0)
         t = torch.arange(0, t_max, t_step).to(device)
         x_gt = oscillator.ode_solve(x0.squeeze(), t).unsqueeze(0)
         x_pred = model(x0, t)
@@ -100,10 +133,16 @@ with mlflow.start_run(run_id=run_id) as run:
         plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), fancybox=True, ncol=5,
                    fontsize=legend_fontsize)
         plt.subplots_adjust(bottom=0.25)
-        plt.title('Node 1 Trajectory', fontsize=title_fontsize)
+        # plt.title('Node 1 Trajectory', fontsize=title_fontsize)
         plt.tick_params(axis='x', labelsize=axis_tick_fontsize)
         plt.tick_params(axis='y', labelsize=axis_tick_fontsize)
-        plt.show()
+        plt.tight_layout()
+        # plt.show()
+
+        plt.savefig('Node 1 Trajectory.svg', format='svg')
+        mlflow.log_artifact('Node 1 Trajectory.svg', "plots")
+        os.remove('Node 1 Trajectory.svg')
+        plt.close()
 
         # Plot dissipativity violations on trajectories for node 1:
         dissipativity_loss = criterion_dissipativity(x_pred, model, aggregator=None, relu=False)[:, 0]
@@ -118,56 +157,45 @@ with mlflow.start_run(run_id=run_id) as run:
         plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), fancybox=True, ncol=5,
                    fontsize=legend_fontsize)
         plt.subplots_adjust(bottom=0.25)
-        plt.title('Node 1 Dissipativity Violations', fontsize=title_fontsize)
+        # plt.title('Node 1 Dissipativity Violations', fontsize=title_fontsize)
         plt.tick_params(axis='x', labelsize=axis_tick_fontsize)
         plt.tick_params(axis='y', labelsize=axis_tick_fontsize)
-        plt.show()
+        plt.tight_layout()
+        # plt.show()
+
+        plt.savefig('Node 1 Dissipativity Violations.svg', format='svg')
+        mlflow.log_artifact('Node 1 Dissipativity Violations.svg', "plots")
+        os.remove('Node 1 Dissipativity Violations.svg')
+        plt.close()
 
         # Plot dissipativity loss over time for node 1:
         plt.axhline(y=0, color='red', linestyle='--')
         plt.plot(t.cpu().numpy(), dissipativity_loss.cpu().numpy(), label='Dissipativity Loss', color='blue')
         plt.xlabel('Time', fontsize=axis_label_fontsize)
         plt.ylabel('$s(u,y)-\\dot{V}(x)$', fontsize=axis_label_fontsize)
-        plt.title('Node 1 Dissipativity Loss', fontsize=title_fontsize)
+        # plt.title('Node 1 Dissipativity Loss', fontsize=title_fontsize)
         plt.tick_params(axis='x', labelsize=axis_tick_fontsize)
         plt.tick_params(axis='y', labelsize=axis_tick_fontsize)
-        plt.show()
+        plt.tight_layout()
+        # plt.show()
+
+        plt.savefig('Node 1 Dissipativity Loss.svg', format='svg')
+        mlflow.log_artifact('Node 1 Dissipativity Loss.svg', "plots")
+        os.remove('Node 1 Dissipativity Loss.svg')
+        plt.close()
 
         # Plot storage function over time for node 1:
         storage = dissipativity.evaluate_storage(x_pred.squeeze())[:, 0]
         plt.plot(t.cpu().numpy(), storage.cpu().numpy(), label='Storage Function', color='blue')
         plt.xlabel('Time', fontsize=axis_label_fontsize)
         plt.ylabel('V(x)', fontsize=axis_label_fontsize)
-        plt.title('Node 1 Storage Function', fontsize=title_fontsize)
+        # plt.title('Node 1 Storage Function', fontsize=title_fontsize)
         plt.tick_params(axis='x', labelsize=axis_tick_fontsize)
         plt.tick_params(axis='y', labelsize=axis_tick_fontsize)
-        plt.show()
+        plt.tight_layout()
+        # plt.show()
 
-    exit()
-    # Plot the ground-truth and predicted trajectories of each node:
-    fig, axs = plt.subplots(3, 1, figsize=(10, 10))
-
-    for i in range(3):
-        axs[i].plot(x_gt[:, i, 0].cpu().detach().numpy(), x_gt[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} GT')
-        axs[i].plot(x_pred[:, i, 0].cpu().detach().numpy(), x_pred[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} Pred')
-        axs[i].set_xlabel('Position')
-        axs[i].set_ylabel('Velocity')
-        axs[i].legend()
-
-    plt.tight_layout()
-    plt.show()
-
-    # Plot the ground-truth and predicted state evolution over time of each node for a sample from the test dataset:
-    fig, axs = plt.subplots(3, 1, figsize=(10, 10))
-
-    for i in range(3):
-        axs[i].plot(t.cpu().numpy(), x_gt[:, i, 0].cpu().detach().numpy(), label=f'Node {i + 1} GT Position')
-        axs[i].plot(t.cpu().numpy(), x_pred[:, i, 0].cpu().detach().numpy(), label=f'Node {i + 1} Pred Position')
-        axs[i].plot(t.cpu().numpy(), x_gt[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} GT Velocity')
-        axs[i].plot(t.cpu().numpy(), x_pred[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} Pred Velocity')
-        axs[i].set_xlabel('Time')
-        axs[i].set_ylabel('Position/Velocity')
-        axs[i].legend()
-
-    plt.tight_layout()
-    plt.show()
+        plt.savefig('Node 1 Storage Function.svg', format='svg')
+        mlflow.log_artifact('Node 1 Storage Function.svg', "plots")
+        os.remove('Node 1 Storage Function.svg')
+        plt.close()

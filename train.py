@@ -7,7 +7,7 @@ import tempfile
 import os
 
 from dissnn.model import NetworkODEModel, SparsityLoss, DissipativityLoss
-from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2
+from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2, NonlinearPendulum
 from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, L2Gain, Passivity, DissipativityPendulum
 
 
@@ -19,13 +19,13 @@ from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics
 model_save_path = 'model_files/model_pendulum_3node.pth'
 train_data_file = 'data/pendulum_3node/train.npz'
 test_data_file = 'data/pendulum_3node/test.npz'
-epochs = 20
-test_interval = 5
-batch_size = 64
+epochs = 10
+test_interval = 2
+batch_size = 128
 device = 'cuda'
 sparsity_weight = 0.0
 dissipativity_weight = 0.0
-use_gt_adjacency_matrix = True
+use_gt_adjacency_matrix = False
 storage_function_degree = 4
 NodeDynamics = NonlinearOscillator2NodeDynamics
 
@@ -49,9 +49,9 @@ dissipativity = DissipativityPendulum(**dataset_train.info)
 # Define the model:
 num_nodes = dataset_train.num_nodes
 hidden_dim_node = 50
-num_hidden_layers_node = 4
-hidden_dim_coupling = 50
-num_hidden_layers_coupling = 4
+num_hidden_layers_node = 2
+hidden_dim_coupling = 20
+num_hidden_layers_coupling = 2
 adjacency_matrix = dataset_train.adjacency_matrix.to(float).to(device) if use_gt_adjacency_matrix else None
 
 model = NetworkODEModel(num_nodes=num_nodes,
@@ -65,7 +65,8 @@ model = NetworkODEModel(num_nodes=num_nodes,
 
 # Optimizer and loss:
 optimizer = torch.optim.Adam(model.parameters(), lr=0.02)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+#scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, factor=0.1)
 criterion = SparsityLoss(model, alpha=sparsity_weight).to(device)
 criterion_dissipativity = DissipativityLoss(dissipativity, dataset_train.adjacency_matrix, device=device).to(device)
 
@@ -117,7 +118,7 @@ with mlflow.start_run():
             del x_pred, sparsity_loss, dissipativity_loss, loss
             torch.cuda.empty_cache()
 
-        scheduler.step()
+        #scheduler.step()
         
         if epoch % test_interval == 0:
             # Log the adjacency matrix as an image to MLflow:
@@ -156,7 +157,7 @@ with mlflow.start_run():
                     torch.save(model.state_dict(), model_save_path)
                     mlflow.pytorch.log_model(model, "best_model")
 
-                # scheduler.step(val_loss)
+                scheduler.step(val_loss)
                 print(f'Epoch {epoch}: Test loss = {val_loss / len(dataloader_test)}')
 
             model.train()
@@ -166,14 +167,14 @@ with mlflow.start_run():
 
 # plot the ground-truth and predicted trajectories of each node for a sample from the test dataset in three subplots
 model.eval()
-oscillator = NonlinearOscillator2(dataset_test.adjacency_matrix.to(device), device=device, **dataset_test.info)
+oscillator = NonlinearPendulum(dataset_test.adjacency_matrix.to(device), device=device, **dataset_test.info)
 x0, _ = next(iter(dataloader_test))
 x0 = x0.to(device)
 t = torch.linspace(0, 5, 100).to(device)
 x_gt = oscillator.ode_solve(x0[0], t).to(device)
 x_pred = model(x0, t)[0]
-fig, axs = plt.subplots(5, 1, figsize=(10, 10))
-for i in range(5):
+fig, axs = plt.subplots(3, 1, figsize=(10, 10))
+for i in range(3):
     axs[i].plot(x_gt[:, i, 0].cpu().detach().numpy(), x_gt[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} GT')
     axs[i].plot(x_pred[:, i, 0].cpu().detach().numpy(), x_pred[:, i, 1].cpu().detach().numpy(), label=f'Node {i + 1} Pred')
     axs[i].set_xlabel('Position')
