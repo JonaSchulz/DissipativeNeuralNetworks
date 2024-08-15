@@ -11,10 +11,10 @@ from dissnn.model import NetworkODEModel, DissipativityLoss, SparsityLoss
 from dissnn.dataset import NonlinearOscillatorDataset, NonlinearOscillator2, NonlinearPendulum
 from dissnn.dissipativity import Dissipativity, NonlinearOscillator2NodeDynamics, L2Gain, DissipativityPendulum
 
-run_id = 'ddfd01b9ae4a4edd96585acf668c2873'
+run_id = '09d61d9fdda64cd3bdb434c8dbbccfab'
 test_data_file = 'data/oscillator2_11node_3/val.npz'
 test_data_file = None
-do_eval = True
+do_eval = False
 t_max = 40.0  # Maximum time for simulation
 t_step = 0.01   # Time step for simulation
 axis_label_fontsize = 16
@@ -117,7 +117,9 @@ with mlflow.start_run(run_id=run_id) as run:
             mlflow.log_metric('test/dissipativity_violation_percentage_eval', percentage.item())
 
         # Simulate a trajectory and test the model on it:
-        x0, _ = next(iter(dataloader_test))
+        for i, (x0, _) in enumerate(dataloader_test):
+            if i == 10:
+                break
         x0 = x0.to(device)[0].unsqueeze(0)
         t = torch.arange(0, t_max, t_step).to(device)
         x_gt = oscillator.ode_solve(x0.squeeze(), t).unsqueeze(0)
