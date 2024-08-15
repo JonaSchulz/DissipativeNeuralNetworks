@@ -1,7 +1,6 @@
 # Dissipative Neural Networks
 
-This repository contains the code for our paper "Dissipative Neural Networks for Modeling Distributed Nonlinear
-Systems".
+This repository contains the code for our paper "[Dissipative Neural Networks for Modeling Distributed Nonlinear Systems](Paper.pdf)".
 
 ### Dissipativity
 [Dissipativity](https://en.wikipedia.org/wiki/Dissipative_system) is a concept from systems and control theory to 
