@@ -36,5 +36,5 @@ weight $\lambda$ of the dissipativity loss to the MSE loss is chosen correctly, 
 trajectories.
 
 
-![plot](./images/comparison.png))
+![plot](./images/comparison.png)
 
