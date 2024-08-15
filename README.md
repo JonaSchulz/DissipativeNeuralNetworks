@@ -1,6 +1,6 @@
 # Dissipative Neural Networks
 
-This repository contains the code for our paper "[Dissipative Neural Networks for Modeling Distributed Nonlinear Systems](Paper.pdf)".
+This repository contains the code for our paper ["Dissipative Neural Networks for Modeling Distributed Nonlinear Systems"](Paper.pdf).
 
 ### Dissipativity
 [Dissipativity](https://en.wikipedia.org/wiki/Dissipative_system) is a concept from systems and control theory to 
@@ -20,8 +20,8 @@ Dissipativity has important links to system stability and is therefore an import
 
 ### Neural Dynamical Models
 We model distributed dynamical systems with the help of neural networks. The basis for our neural network model is
-taken from the paper "[Structural Inference of Networked Dynamical Systems with Universal
-Differential Equations](https://arxiv.org/abs/2207.04962)" where a networked dynamical system is modeled with
+taken from the paper ["Structural Inference of Networked Dynamical Systems with Universal
+Differential Equations"](https://arxiv.org/abs/2207.04962) where a networked dynamical system is modeled with
 two neural networks, one modeling the physics of each node and one modeling the coupling physics between connected
 nodes. The neural network model is trained to minimize the difference between the predicted state dynamics and the
 actual state dynamics of the system.
